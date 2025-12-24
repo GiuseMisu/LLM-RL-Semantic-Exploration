@@ -1,0 +1,13 @@
+# Core RL Libraries
+stable-baselines3==2.3.2    # For RL algs
+gymnasium==0.29.1           
+minigrid==2.3.1             # DoorKey environment
+
+# Deep Learning Backend
+torch>=2.0.0                
+
+# Utilities & Visualization
+tensorboard                 # Tracking loss and rewards
+moviepy                     # Saving videos of the agent
+matplotlib                  # Plotting
+numpy>=1.21.0
