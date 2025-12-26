@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 # --- 1. THE SYSTEM PROMPT ---
 # This acts as the "Rulebook" for the LLM. 
 # It converts the LLM into a Reward Function.
+
+#inserted chackinv and check facing in prompt to force LLM to "check" the state before reasoning
 SYSTEM_PROMPT = """
 You are an expert Reward Function for a Reinforcement Learning agent in the MiniGrid-DoorKey environment.
 Your goal is to guide the agent towards the solution by providing a SCALAR REWARD (between -0.1 and 1.0).
@@ -22,6 +24,11 @@ CRITICAL COORDINATE RULES:
 - Therefore: (1, 2) is SOUTH of (1, 1). Do not confuse this with standard graphs.
 - "dir" in the input gives you the correct direction relative to the agent. Trust it.
 
+INTERACTION RULES:
+To PICKUP an object or TOGGLE/OPEN a door, you must be in the adjacent cell facing it (dir=Front). 
+You cannot interact with objects to your Left, Right, or Behind.
+Consider the interaction rules when reasoning about rewards.
+
 INPUT FORMAT:
 You will receive a structured JSON description.
 Example: "Key": "loc=(1, 2), dist=1, dir=South"
@@ -29,18 +36,28 @@ Example: "Key": "loc=(1, 2), dist=1, dir=South"
 OUTPUT FORMAT:
 You must strictly follow this JSON format:
 {
-  "reasoning": "A short sentence explaining why you gave this score.",
+  "check_inventory": "What is the agent holding?",
+  "check_facing": "Is the target In Front or Behind?",
+  "reasoning": "Based on the checks above, explain the score.",
   "reward": <float between -0.1 and 1.0>
 }
 
 SCORING GUIDELINES:
-- 0.0: Useless move (hitting a wall, spinning in place).
-- 0.1: Exploring new tiles / moving towards an unseen area.
-- 0.3: Moving closer to a visible Key.
-- 0.5: PICKING UP the Key (Major sub-goal).
-- 0.7: Moving towards the Door (while holding the Key).
-- 1.0: OPENING the Door or Reaching the Goal.
-- -0.1: Repeating the same state (getting stuck).
+
+PHASE 1: FINDING THE KEY (If Inventory is 'None')
+- 0.1: Wandering, not seeing the Key.
+- 0.3: The Key is visible (in 'Key' field) but not close.
+- 0.5: The Key is marked <REACHABLE>. (IMMEDIATE REWARD, STOP HERE).
+- -0.1: Moving away from the Key or focusing on the Door while Inventory is None.
+- DO NOT CARE ABOUT THE DOOR OR GOAL IN THIS PHASE.
+
+PHASE 2: OPENING THE DOOR (If Inventory has 'Key')
+- 0.1: Wandering with Key.
+- 0.5: Standing adjacent to the Door (Door is <REACHABLE>).
+- 0.7: The Door is Open/Unlocked.
+
+PHASE 3: GOAL
+- 1.0: Reached the Goal.
 
 Be generous with intermediate steps (like moving closer to the key) to encourage progress.
 """
@@ -75,6 +92,15 @@ class BaseLLMClient(ABC):
             # 2. Extract the number
             reward = self._parse_scalar_reward(raw_response)
             
+            #=====================
+            # --- GUARDRAIL ---
+            # in the system promt there is a reward rule: rew > 0.5 only if holding key
+            #=====================
+            # If LLM gives > 0.5 (implies holding key) but Inventory is None, crush the reward.
+            if "'inventory': 'None'" in state_description and reward > 0.4:
+                print("[GUARDRAIL] LLM hallucinated holding key => Clamping reward")
+                reward = 0.1
+
             if self.debug:
                 print(f"[LLM RAW]: {raw_response}")
                 print(f"[LLM PARSED]: {reward}")

@@ -221,7 +221,7 @@ if __name__ == "__main__":
         obs, reward, terminated, truncated, info = env.step(action)
         
         # Generate Compact Description
-        desc = get_compact_global_description(env, include_distances=False)
+        desc = get_compact_global_description(env, include_distances=True)
         descVerbose = get_enhanced_global_description(env)
         
         print("-" * 50)
