@@ -1,11 +1,14 @@
+import os
 import re
+import json
+import sys
+import time
 from abc import ABC, abstractmethod
 
 # --- 1. THE SYSTEM PROMPT ---
 # This acts as the "Rulebook" for the LLM. 
 # It converts the LLM into a Reward Function.
 
-#inserted chackinv and check facing in prompt to force LLM to "check" the state before reasoning
 SYSTEM_PROMPT = """
 You are an expert Reward Function for a Reinforcement Learning agent in the MiniGrid-DoorKey environment.
 Your goal is to guide the agent towards the solution by providing a SCALAR REWARD (between -0.1 and 1.0).
@@ -21,25 +24,29 @@ CRITICAL COORDINATE RULES:
 - The Grid Origin (0,0) is TOP-LEFT.
 - X increases to the Right (East).
 - Y increases DOWNWARDS (South). 
-- Therefore: (1, 2) is SOUTH of (1, 1). Do not confuse this with standard graphs.
 - "dir" in the input gives you the correct direction relative to the agent. Trust it.
 
 INTERACTION RULES:
 To PICKUP an object or TOGGLE/OPEN a door, you must be in the adjacent cell facing it (dir=Front). 
 You cannot interact with objects to your Left, Right, or Behind.
-Consider the interaction rules when reasoning about rewards.
 
 INPUT FORMAT:
 You will receive a structured JSON description.
-Example: "Key": "loc=(1, 2), dist=1, dir=South"
 
 OUTPUT FORMAT:
-You must strictly follow this JSON format:
+Output exactly ONE JSON object representing the IMMEDIATE current state only.
+Do not simulate future steps. Do not output multiple JSONs.
+Do not include comments (//) inside the JSON object.
+
+### EXAMPLE INPUT:
+"{ 'Agent': { 'pos': (1, 1), 'facing': 'East', 'inventory': 'None' }, 'Key': 'loc=(2, 1), dist=1, dir=Front <REACHABLE>' }"
+
+### EXAMPLE OUTPUT:
 {
-  "check_inventory": "What is the agent holding?",
-  "check_facing": "Is the target In Front or Behind?",
-  "reasoning": "Based on the checks above, explain the score.",
-  "reward": <float between -0.1 and 1.0>
+  "check_inventory": "None",
+  "check_facing": "Key is Front",
+  "reasoning": "The agent sees the key immediately in front (reachable). Reward is max for Phase 1.",
+  "reward": 0.5
 }
 
 SCORING GUIDELINES:
@@ -47,9 +54,8 @@ SCORING GUIDELINES:
 PHASE 1: FINDING THE KEY (If Inventory is 'None')
 - 0.1: Wandering, not seeing the Key.
 - 0.3: The Key is visible (in 'Key' field) but not close.
-- 0.5: The Key is marked <REACHABLE>. (IMMEDIATE REWARD, STOP HERE).
+- 0.5: The Key is marked <REACHABLE>. (IMMEDIATE REWARD).
 - -0.1: Moving away from the Key or focusing on the Door while Inventory is None.
-- DO NOT CARE ABOUT THE DOOR OR GOAL IN THIS PHASE.
 
 PHASE 2: OPENING THE DOOR (If Inventory has 'Key')
 - 0.1: Wandering with Key.
@@ -58,9 +64,20 @@ PHASE 2: OPENING THE DOOR (If Inventory has 'Key')
 
 PHASE 3: GOAL
 - 1.0: Reached the Goal.
-
-Be generous with intermediate steps (like moving closer to the key) to encourage progress.
 """
+
+def clean_json_text(text):
+    """
+    Extracts ONLY the first JSON object found in the text.
+    Stops immediately after the first closing brace '}'.
+    """
+    # This regex finds the first occurrence of { ... } 
+    # .*? is non-greedy, meaning it stops at the first } it sees.
+    match = re.search(r'\{.*?\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
+    # If no JSON found, return original text (will likely fail json.loads)
+    return text
 
 class BaseLLMClient(ABC):
     """
@@ -71,62 +88,64 @@ class BaseLLMClient(ABC):
         self.debug = debug
 
     @abstractmethod
-    def get_llm_response(self, prompt: str) -> str:
+    def _get_raw_response(self, prompt: str, generate_explanation: bool) -> str:
         """
-        Raw method to send text to the specific LLM API and get text back.
-        Must be implemented by the child class (e.g., GeminiClient).
+        Subclasses must implement this. 
+        It should return the raw string from the API.
         """
         pass
 
-    def compute_reward(self, state_description: str) -> float:
+    def get_reward(self, observation: str, verbose: bool = False, generate_explanation: bool = False) -> float:
         """
-        The main method called by the RL Agent.
-        1. Sends state to LLM.
-        2. Parses the response.
-        3. Returns the scalar reward.
+        The MAIN method. It handles the full pipeline:
+        Fetch Raw -> Repair JSON -> Clean -> Parse -> Print -> Return Float
+        Args:
+            observation (str): The observation string
+            generate_explanation (bool): If False, stops generation at '}' to save speed/tokens.
         """
+
+        if verbose:
+            print(f"\nScanning State: {observation}")
+            #start_time = time.time() #[timer]
+
         try:
-            # 1. Call the API
-            raw_response = self.get_llm_response(state_description)
+            # 1. Call the specific API (Gemini, OpenAI, etc.)
+            raw_text = self._get_raw_response(observation, generate_explanation)
             
-            # 2. Extract the number
-            reward = self._parse_scalar_reward(raw_response)
+            # 2. Repair JSON if cut off
+            if not generate_explanation and raw_text:
+                # If used the stop token '}', the model stops writing BEFORE 
+                # sending it (or right at it), so we often need to add it back.
+                stripped = raw_text.strip()
+                if not stripped.endswith("}"):
+                    raw_text = stripped + "}"
+
+            # 3. Regex Clean
+            cleaned_text = clean_json_text(raw_text)
+
+            # 4. Parse JSON
+            data = json.loads(cleaned_text)
+
+            # 5. Standardized Printing
+            if verbose:
+                print(f"\n[Raw LLM Output]:\n{cleaned_text}")
+                print("-" * 40)
+                print(f"CHECK INV: {data.get('check_inventory')}")
+                print(f"REWARD:    {data.get('reward')}")
+                if generate_explanation:
+                    print(f"REASON:    {data.get('reasoning')}")
+                print("-" * 40)
+                sys.stdout.flush() # FORCE PRINT TO TERMINAL => AVOID BUFFERING ISSUES
+                #[timer]
+                # end_time = time.time()
+                # print(f"Execution time: {end_time - start_time:.4f} seconds")
             
-            #=====================
-            # --- GUARDRAIL ---
-            # in the system promt there is a reward rule: rew > 0.5 only if holding key
-            #=====================
-            # If LLM gives > 0.5 (implies holding key) but Inventory is None, crush the reward.
-            if "'inventory': 'None'" in state_description and reward > 0.4:
-                print("[GUARDRAIL] LLM hallucinated holding key => Clamping reward")
-                reward = 0.1
+            return float(data.get('reward', 0.0))
 
-            if self.debug:
-                print(f"[LLM RAW]: {raw_response}")
-                print(f"[LLM PARSED]: {reward}")
-                
-            return reward
-
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            print(f"[ERROR] JSON Parsing Failed: {e}")
+            print(f"[Raw Text was]: {raw_text}")
+            return 0.0
         except Exception as e:
-            print(f"Error in LLM Reward Calculation: {e}")
-            return 0.0  # Fallback to neutral reward if LLM fails
-
-    def _parse_scalar_reward(self, response_text: str) -> float:
-        """
-        Robustly extracts a float number from the LLM's answer.
-        Handles JSON, raw numbers, or sentences like 'The reward is 0.5'.
-        """
-        # 1. Try to find the specific JSON field "reward": 0.5
-        json_match = re.search(r'"reward"\s*:\s*([-+]?\d*\.?\d+)', response_text)
-        if json_match:
-            return float(json_match.group(1))
-
-        # 2. Fallback: Find the last floating point number in the text
-        print("==> [FALLBACK] Could not find JSON 'reward' field, Trying to extract number from text")
-        # (LLMs usually put the final score at the end)
-        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", response_text)
-        if numbers:
-            # Return the last number found, assuming it's the score
-            return float(numbers[-1])
-            
-        return 0.0
+            print(f"[ERROR] General Failure: {e}")
+            return 0.0

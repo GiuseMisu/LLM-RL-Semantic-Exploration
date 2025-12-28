@@ -14,8 +14,6 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 import numpy as np
-import gymnasium as gym
-from minigrid.wrappers import ImgObsWrapper
 from minigrid.core.constants import OBJECT_TO_IDX, COLOR_TO_IDX
 
 # Mappings
@@ -135,8 +133,8 @@ if __name__ == "__main__":
     
     # go up two levels to import from src/common/env_setup.py
     sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-
     from src.common.env_setup import make_minigrid_env
+    
     env = make_minigrid_env(env_id="MiniGrid-DoorKey-5x5-v0", render_mode="human")()
     #make_minigrid_env already applies ImgObsWrapper => return the WRAPPED ENV
     env.reset()
