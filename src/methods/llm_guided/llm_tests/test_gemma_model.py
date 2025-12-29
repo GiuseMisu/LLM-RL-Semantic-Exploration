@@ -7,7 +7,6 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 from src.methods.llm_guided.llm_shared_utils import SYSTEM_PROMPT
 
-
 MODEL_NAME = "qwen2.5:1.5b"
 
 def get_llm_reward(mock_observation):
