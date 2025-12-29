@@ -8,11 +8,10 @@ from phi3_5 import Phi35LLMClient
 
 if __name__ == "__main__":
     
-    print("--- INITIALIZING PHI-3.5 CLIENT ---")
-    
     try:
         # Initialize the client
         client = Phi35LLMClient(debug=True, model_name="phi3.5")
+        print(f"Model: {client.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")
         sys.exit(1)

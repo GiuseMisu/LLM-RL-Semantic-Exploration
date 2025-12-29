@@ -5,14 +5,11 @@ from minigrid.wrappers import ImgObsWrapper
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
-ENV_ID = "MiniGrid-DoorKey-5x5-v0"
-
-def make_minigrid_env(env_id=ENV_ID, render_mode="rgb_array", log_dir=None, idx=0):
+def make_minigrid_env(env_id="MiniGrid-DoorKey-5x5-v0", render_mode="rgb_array", log_dir=None, idx=0):
     """
     Create a single MiniGrid environment instance.
-    
     Args:
-        env_id (str): The environment ID.
+        env_id (str): The environment ID: e.g., "MiniGrid-DoorKey-5x5-v0" or "MiniGrid-Empty-5x5-v0".
         render_mode (str): 'rgb_array' for training, 'human' for visualization.
         log_dir (str): Directory to save Monitor logs.
         idx (int): Unique index for this environment (useful for multi-process logging).
@@ -44,7 +41,7 @@ def make_minigrid_env(env_id=ENV_ID, render_mode="rgb_array", log_dir=None, idx=
 
     return _init
 
-def get_vectorized_env(env_id=ENV_ID, n_envs=4, log_dir="./data/logs/"):
+def get_vectorized_env(env_id="MiniGrid-DoorKey-5x5-v0", n_envs=4, log_dir="./data/logs/"):
     """
     Creates a Vectorized Environment (multiple independent copies running in parallel).
     This increases the diversity of data in each batch and stabilizes PPO training.
@@ -58,30 +55,32 @@ def get_vectorized_env(env_id=ENV_ID, n_envs=4, log_dir="./data/logs/"):
     return DummyVecEnv(env_fns)
 
 if __name__ == "__main__":
-    print(f"--- Inspecting {ENV_ID} ---")
+    
+    env_id_door_key = "MiniGrid-DoorKey-5x5-v0"
+    env_id_empty = "MiniGrid-Empty-5x5-v0" 
+    print(f"--- Inspecting: {env_id_empty} ---")
     
     # Create one instance
-    test_env = make_minigrid_env(render_mode="human")()
+    test_env = make_minigrid_env(env_id=env_id_empty, render_mode="human")()
     obs, info = test_env.reset()
     
     print(f"Observation Shape: {obs.shape}")
     print(f"Action Space:      {test_env.action_space}")
-    print("""Action space: Discrete(7)
-            0 = Turn Left       # Rotate 90° counterclockwise
-            1 = Turn Right      # Rotate 90° clockwise
-            2 = Move Forward    # Move one cell in the direction you're facing
-            3 = Pick Up         # Pick up an object (like the key)
-            4 = Drop            # Drop the object you're carrying
-            5 = Toggle          # Interact with objects (open/close doors)
-            6 = Done            # Signal task completion (rarely used)""")
     
-    print("\n--- Understanding the Input (7x7x3) ---")
-    print("The observation is a 7x7 grid centered around the agent, with 3 channels of info:")
-    print("Channel 0 (Object IDs): What object is in each cell (2 = Floor / 4 = Keys / ...)")
-    print("Channel 1 (Colors):     The color of each object (0=Red, 1=Green, 2=Blue, ...)")
-    print("Channel 2 (State):      The state of objects 0=Open door, 1=Closed door, 2=Locked door")
-    
-    print("\n--- Interaction Test ---")
+    # =======> for the minigrid doorkey env
+    # print("""Action space: Discrete(7)
+    #         0 = Turn Left       # Rotate 90° counterclockwise
+    #         1 = Turn Right      # Rotate 90° clockwise
+    #         2 = Move Forward    # Move one cell in the direction you're facing
+    #         3 = Pick Up         # Pick up an object (like the key)
+    #         4 = Drop            # Drop the object you're carrying
+    #         5 = Toggle          # Interact with objects (open/close doors)
+    #         6 = Done            # Signal task completion (rarely used)""")
+    # print("\n--- Understanding the Input (7x7x3) ---")
+    # print("The observation is a 7x7 grid centered around the agent, with 3 channels of info:")
+    # print("Channel 0 (Object IDs): What object is in each cell (2 = Floor / 4 = Keys / ...)")
+    # print("Channel 1 (Colors):     The color of each object (0=Red, 1=Green, 2=Blue, ...)")
+    # print("Channel 2 (State):      The state of objects 0=Open door, 1=Closed door, 2=Locked door")
     
     for step in range(5):
         action = test_env.action_space.sample()  # Random action

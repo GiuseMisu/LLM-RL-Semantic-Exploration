@@ -7,13 +7,13 @@ from google import genai
 from google.genai import types
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, SYSTEM_PROMPT
+from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
 
 
 class GeminiLLMClient(BaseLLMClient):
-    def __init__(self, api_key=None, model_name="gemini-1.5-flash", debug=False):
+    def __init__(self, api_key=None, model_name="gemini-1.5-flash", debug=False, system_prompt=DOOR_KEY_SYSTEM_PROMPT):
         
-        super().__init__(debug=debug)
+        super().__init__(debug=debug, system_prompt=system_prompt)
         
         # Authentication
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
@@ -25,7 +25,7 @@ class GeminiLLMClient(BaseLLMClient):
         self.model_name = model_name
 
         #check system prompt
-        if not SYSTEM_PROMPT:
+        if not system_prompt:
             raise ValueError("SYSTEM_PROMPT is not set properly")
         
         self.safety_settings = [
@@ -43,7 +43,7 @@ class GeminiLLMClient(BaseLLMClient):
         try:
             #build the config
             run_config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=self.system_prompt,
                 temperature=0.1, 
                 safety_settings=self.safety_settings,
                 # =====[CRITICAL] Stop sequences=====

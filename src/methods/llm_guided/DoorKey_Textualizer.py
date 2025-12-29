@@ -50,7 +50,6 @@ def get_relative_direction(agent_pos, agent_dir, target_pos):
     dot = dx*fx + dy*fy
     
     # 4. Cross product (2D) determines Left/Right
-    # cross = fx*dy - fy*dx
     cross = fx*dy - fy*dx
     
     if dot > 0 and abs(cross) <= abs(dot): return "Front"
@@ -59,7 +58,7 @@ def get_relative_direction(agent_pos, agent_dir, target_pos):
     return "Left"
 
 # --- UPDATED COMPACT TEXTUALIZER ---
-def get_compact_global_description(env, include_distances=True):
+def get_DOORKEY_description(env, include_distances=True):
     base_env = env.unwrapped
     agent_pos = sanitize(base_env.agent_pos)
     agent_dir = base_env.agent_dir
@@ -140,7 +139,7 @@ if __name__ == "__main__":
 
     # Initial State
     print(f"\n[Start] Initial State:")
-    print(get_compact_global_description(env))
+    print(get_DOORKEY_description(env))
     
     time.sleep(2.5)
 
@@ -154,7 +153,7 @@ if __name__ == "__main__":
         obs, reward, terminated, truncated, info = env.step(action)
         
         # Generate Compact Description
-        desc = get_compact_global_description(env, include_distances=True)
+        desc = get_DOORKEY_description(env, include_distances=True)
         #descVerbose = get_enhanced_global_description(env)
         
         print("-" * 50)
@@ -240,7 +239,6 @@ if __name__ == "__main__":
 # 4. FIELD: "Goal"
 # --------------------------------------------------------------------------------
 # Possible Value:
-
 #   A. IF NOT FOUND:
 #      Value: "Unknown"
 #      - Note: Default value is "Unknown" (unlike "Not Found" for others).

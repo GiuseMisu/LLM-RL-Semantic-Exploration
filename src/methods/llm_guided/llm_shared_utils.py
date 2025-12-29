@@ -5,11 +5,7 @@ import sys
 import time
 from abc import ABC, abstractmethod
 
-# --- 1. THE SYSTEM PROMPT ---
-# This acts as the "Rulebook" for the LLM. 
-# It converts the LLM into a Reward Function.
-
-SYSTEM_PROMPT = """
+DOOR_KEY_SYSTEM_PROMPT = """
 You are an expert Reward Function for a Reinforcement Learning agent in the MiniGrid-DoorKey environment.
 Your goal is to guide the agent towards the solution by providing a SCALAR REWARD (between -0.1 and 1.0).
 
@@ -70,6 +66,39 @@ SCORING GUIDELINES (EVALUATE IN THIS ORDER):
    - -0.1: Moving away from the Key or focusing on the Door.
 """
 
+EMPTY_SYSTEM_PROMPT = """
+You are an expert Reward Function for a Reinforcement Learning agent in the MiniGrid-Empty environment.
+Your goal is to guide the agent to the GOAL (Green Square).
+
+THE TASK:
+1. Locate the Goal.
+2. Move towards the Goal.
+3. Reach the Goal.
+
+COORDINATE RULES:
+- The Grid Origin (0,0) is TOP-LEFT.
+- X increases to the Right (East).
+- Y increases DOWNWARDS (South).
+- "dir" in the input is RELATIVE to the agent (Front, Left, Right, Behind).
+
+INPUT FORMAT:
+You will receive a structured JSON description.
+
+OUTPUT FORMAT:
+Output exactly ONE JSON object representing the IMMEDIATE current state.
+Do not simulate future steps. Do not output multiple JSONs.
+IMPORTANT: Do not include C++ style comments (//) inside the JSON object.
+
+### EXAMPLE INPUT:
+"{ 'Agent': { 'pos': (1, 1), 'facing': 'East' }, 'Goal': 'loc=(3, 1), dist=2, dir=Front' }"
+
+### EXAMPLE OUTPUT:
+{
+  "reasoning": "The Goal is directly in front. Moving forward reduces distance.",
+  "reward": 0.5
+}
+"""
+
 def clean_json_text(text):
     """
     Extracts ONLY the first JSON object found in the text.
@@ -98,7 +127,8 @@ class BaseLLMClient(ABC):
     Abstract Base Class for all LLM clients
     Ensures that different LLMs all look the same to the RL agent.
     """    
-    def __init__(self, debug=False):
+    def __init__(self, system_prompt: str, debug=False):
+        self.system_prompt = system_prompt
         self.debug = debug
 
     @abstractmethod
@@ -120,7 +150,6 @@ class BaseLLMClient(ABC):
 
         if verbose:
             print(f"\nScanning State: {observation}")
-            #start_time = time.time() #[timer]
 
         try:
             # 1. Call the specific API 
@@ -148,15 +177,15 @@ class BaseLLMClient(ABC):
             if verbose:
                 print(f"\n[Raw LLM Output]:\n{cleaned_text}")
                 print("-" * 40)
-                print(f"CHECK INV: {data.get('check_inventory')}")
-                print(f"REWARD:    {data.get('reward')}")
-                if generate_explanation:
-                    print(f"REASON:    {data.get('reasoning')}")
+                # the two envs have different keys
+                # iterate over keys to handle both DoorKey (check_inventory) and Empty (reasoning)
+                priority_keys = ['check_inventory', 'check_facing', 'reasoning', 'reward']
+                for key in priority_keys:
+                    if key in data:
+                        # Print formatted: Key ...... Value
+                        print(f"{key.upper().ljust(15)}: {data[key]}")
                 print("-" * 40)
-                sys.stdout.flush() # FORCE PRINT TO TERMINAL => AVOID BUFFERING ISSUES
-                #[timer]
-                # end_time = time.time()
-                # print(f"Execution time: {end_time - start_time:.4f} seconds")
+                sys.stdout.flush()
             
             return float(data.get('reward', 0.0))
 

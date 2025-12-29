@@ -4,22 +4,22 @@ import ollama
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, SYSTEM_PROMPT
+from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
 
 class Phi35LLMClient(BaseLLMClient):
-    def __init__(self, model_name="phi3.5", debug=False):
+    def __init__(self, model_name="phi3.5", debug=False, system_prompt=DOOR_KEY_SYSTEM_PROMPT):     
         """
         Args:
             model_name (str): Name of the Ollama model tag (default: 'phi3.5')
             debug (bool): Enable verbose logging
         """
-        super().__init__(debug=debug)
+        super().__init__(debug=debug, system_prompt=system_prompt)
         self.model_name = model_name
         
         #no api key needed cause run locally
 
         # Check if SYSTEM_PROMPT is loaded
-        if not SYSTEM_PROMPT:
+        if not system_prompt:
             raise ValueError("SYSTEM_PROMPT is not set properly in llm_shared_utils.")
 
     def _get_raw_response(self, prompt: str, generate_explanation: bool) -> str:
@@ -39,7 +39,7 @@ class Phi35LLMClient(BaseLLMClient):
                 model=self.model_name,
                 options=llm_options,
                 messages=[
-                    {'role': 'system', 'content': SYSTEM_PROMPT}, 
+                    {'role': 'system', 'content': self.system_prompt}, 
                     {'role': 'user', 'content': f"Observation: {prompt}"} 
                 ]
             )

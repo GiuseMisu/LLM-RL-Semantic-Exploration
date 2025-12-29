@@ -9,8 +9,6 @@ from gemini import GeminiLLMClient
 
 if __name__ == "__main__":
     
-    print("--- INITIALIZING GEMINI CLIENT ---")
-    
     try:
         # Initialize the client
         MODEL_NAME = "gemini-2.5-flash-lite-preview-09-2025"
