@@ -41,8 +41,10 @@ class RobustCachedLLMClient(BaseLLMClient):
         # check the system prompt to decide which guardrails to apply
         if "minigrid-empty" in self.client.system_prompt.lower() or "MiniGrid-Empty" in self.client.system_prompt:
             self.mode = "EMPTY"
-        else:
+        elif "door-key" in self.client.system_prompt.lower() or "Door-Key" in self.client.system_prompt:
             self.mode = "DOORKEY"
+        else:
+            raise Exception("[cached_llm.py] Unrecognized system prompt for guardrail mode")
         
         # Tracking statistics
         self.stats = {

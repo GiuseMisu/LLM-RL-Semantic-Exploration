@@ -1,2 +1,3 @@
 *.pyc
 src/methods/llm_guided/Notes.txt
+.vscode/settings.json
