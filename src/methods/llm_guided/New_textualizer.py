@@ -1,8 +1,3 @@
-# TEXTUALIZER WITH
-# COMPACT GLOBAL DESCRIPTION INCLUDING:
-# - DISTANCES 
-# - RELATIVE DIRECTIONS
-
 
 import os
 import time
@@ -31,8 +26,12 @@ def sanitize(value):
 # --- NEW HELPER: CALCULATE DIRECTION ---
 def get_relative_direction(agent_pos, agent_dir, target_pos):
     """
-    Returns: 'Front', 'Left', 'Right', or 'Behind'
+    Returns: 'Front', 'Left', 'Right', 'Behind' or 'Here'
     """
+    # the agent is standing on the target
+    if agent_pos == target_pos:
+        return "Here"
+
     # 1. Get vector to target
     dx = target_pos[0] - agent_pos[0]
     dy = target_pos[1] - agent_pos[1]
@@ -169,3 +168,93 @@ if __name__ == "__main__":
         time.sleep(2.5) 
             
     env.close()
+
+
+# MINIGRID-DOORKEY OBSERVATION SPECIFICATION
+# ================================================================================
+# STRUCTURE
+# --------------
+# The output is a single JSON object with four primary keys:
+# 1. "Agent"
+# 2. "Key"
+# 3. "Door"
+# 4. "Goal"
+
+# --------------------------------------------------------------------------------
+# 1. FIELD: "Agent"
+# --------------------------------------------------------------------------------
+# Description: Describes the agent's absolute state in the grid.
+# Sub-fields:
+#   * "pos": (x, y)
+#     - Description: The absolute grid coordinates.
+#     - Type: Tuple of Integers.
+#     - Origin: (0,0) is the Top-Left corner.
+#   * "facing": String
+#     - Description: The cardinal direction the agent is currently looking.
+#     - Possible Values: "East" / "South" / "West" / "North"
+#   * "inventory": String
+#     - Description: What the agent is currently holding.
+#     - Possible Values: 
+#       - "None" (Agent is holding nothing)
+#       - "{Color} {Type}" (e.g., "Yellow Key", "Blue Key")
+
+# --------------------------------------------------------------------------------
+# 2. FIELD: "Key"
+# --------------------------------------------------------------------------------
+# Description: The status and location of the Key object relative to the agent.
+# Possible Value:
+#   A. IF CARRIED:
+#      Value: "In Inventory (Carried)": Agent is holding the key.
+#   B. IF NOT FOUND:
+#      Value: "Not Found": The key is not in the visible grid and not in inventory.
+#   C. IF ON GRID:
+#      Value: "loc=(x, y), dist={d}, dir={direction} {tag}"
+#      String components:
+#      1. loc=(x, y): Absolute coordinates of the key.
+#      2. dist={d}: Manhattan distance ( |x1-x2| + |y1-y2| ).
+#      3. dir={direction}: The direction of the key RELATIVE to the Agent's facing direction
+#         - Possible Values: "Front", "Left", "Right", "Behind" and "Here"
+#      4. {tag}: Reachability marker.
+#         - Value: "<REACHABLE>"
+#         - Condition: Appears ONLY if `dist=1` AND `dir=Front`.
+#         - Otherwise: Empty string.
+
+# --------------------------------------------------------------------------------
+# 3. FIELD: "Door"
+# --------------------------------------------------------------------------------
+# Description: The status and location of the Door object.
+# Possible Value:
+#   A. IF NOT FOUND:
+#      Value: "Not Found"
+#   B. IF ON GRID:
+#      Value: "loc=(x, y), dist={d}, dir={direction} {tag}, state={s}"
+#      Breakdown of components:
+#      1. loc, dist, dir, {tag}: Same logic as "Key" above.
+#      2. state={s}: The physical state of the door.
+#         - Possible Values:
+#           - "Locked" (Requires matching key to open)
+#           - "Closed" (Can be toggled open if unlocked)
+#           - "Open"   (you can pass through)
+
+# --------------------------------------------------------------------------------
+# 4. FIELD: "Goal"
+# --------------------------------------------------------------------------------
+# Possible Value:
+
+#   A. IF NOT FOUND:
+#      Value: "Unknown"
+#      - Note: Default value is "Unknown" (unlike "Not Found" for others).
+#   B. IF ON GRID:
+#      Value: "loc=(x, y), dist={d}, dir={direction} {tag}"
+#      - Uses the exact same format strings as Key (loc, dist, dir, reachability)
+
+# ================================================================================
+# RELATIVE DIRECTIONS (`dir`)
+# ================================================================================
+# The `dir` field is critical. It is NOT a cardinal direction (North/South).
+# It is relative to the agent.
+# - "Front": Object is ahead. (If dist=1, you can interact).
+# - "Left": Object is to the left hand side.
+# - "Right": Object is to the right hand side.
+# - "Behind": Object is behind the agent.
+# ================================================================================

@@ -36,7 +36,7 @@ You will receive a structured JSON description.
 OUTPUT FORMAT:
 Output exactly ONE JSON object representing the IMMEDIATE current state only.
 Do not simulate future steps. Do not output multiple JSONs.
-Do not include comments (//) inside the JSON object.
+IMPORTANT: Do not include comments (//) inside the JSON object.
 
 ### EXAMPLE INPUT:
 "{ 'Agent': { 'pos': (1, 1), 'facing': 'East', 'inventory': 'None' }, 'Key': 'loc=(2, 1), dist=1, dir=Front <REACHABLE>' }"
@@ -49,21 +49,25 @@ Do not include comments (//) inside the JSON object.
   "reward": 0.5
 }
 
-SCORING GUIDELINES:
+SCORING GUIDELINES (EVALUATE IN THIS ORDER):
 
-PHASE 1: FINDING THE KEY (If Inventory is 'None')
-- 0.1: Wandering, not seeing the Key.
-- 0.3: The Key is visible (in 'Key' field) but not close.
-- 0.5: The Key is marked <REACHABLE>. (IMMEDIATE REWARD).
-- -0.1: Moving away from the Key or focusing on the Door while Inventory is None.
+1. PHASE 3: GOAL (HIGHEST PRIORITY)
+   - CHECK THIS FIRST. Irrespective of inventory.
+   - 1.0: If 'Goal' is marked dist=0 (Here).
+   - 0.9: If 'Goal' is marked <REACHABLE>.
 
-PHASE 2: OPENING THE DOOR (If Inventory has 'Key')
-- 0.1: Wandering with Key.
-- 0.5: Standing adjacent to the Door (Door is <REACHABLE>).
-- 0.7: The Door is Open/Unlocked.
+2. PHASE 2: OPENING THE DOOR
+   - Condition: Inventory has 'Key' AND Goal is NOT reachable.
+   - 0.7: The Door is Open/Unlocked.
+   - 0.5: Standing adjacent to the Door (Door is <REACHABLE>).
+   - 0.1: Wandering with Key.
 
-PHASE 3: GOAL
-- 1.0: Reached the Goal.
+3. PHASE 1: FINDING THE KEY
+   - Condition: Inventory is 'None'.
+   - 0.5: The Key is marked <REACHABLE>. (IMMEDIATE REWARD).
+   - 0.3: The Key is visible (in 'Key' field) but not close.
+   - 0.1: Wandering, not seeing the Key.
+   - -0.1: Moving away from the Key or focusing on the Door.
 """
 
 def clean_json_text(text):
@@ -78,6 +82,16 @@ def clean_json_text(text):
         return match.group(0)
     # If no JSON found, return original text (will likely fail json.loads)
     return text
+
+def strip_json_comments(text_json):
+    """
+    Removes comments (// ...) from a JSON string 
+    so standard json.loads can parse it
+    """
+    # Regex to remove // comments until end of line
+    # It looks for //, then any character (.) until a newline or end of string
+    text_json = re.sub(r'//.*', '', text_json)
+    return text_json
 
 class BaseLLMClient(ABC):
     """
@@ -109,19 +123,23 @@ class BaseLLMClient(ABC):
             #start_time = time.time() #[timer]
 
         try:
-            # 1. Call the specific API (Gemini, OpenAI, etc.)
+            # 1. Call the specific API 
             raw_text = self._get_raw_response(observation, generate_explanation)
             
-            # 2. Repair JSON if cut off
-            if not generate_explanation and raw_text:
+            # 2. Regex Clean
+            # Remove // comments that confuse json.loads
+            cleaned_text = strip_json_comments(raw_text)
+            #Extract the JSON object part
+            cleaned_text = clean_json_text(cleaned_text)
+            cleaned_text = re.sub(r'[^\x20-\x7E\n\r\t]', '', cleaned_text)  # Remove non-ASCII chars
+
+            # 3. Repair JSON if cut off (Check for missing brace)
+            if not generate_explanation and cleaned_text:
                 # If used the stop token '}', the model stops writing BEFORE 
                 # sending it (or right at it), so we often need to add it back.
-                stripped = raw_text.strip()
+                stripped = cleaned_text.strip()
                 if not stripped.endswith("}"):
-                    raw_text = stripped + "}"
-
-            # 3. Regex Clean
-            cleaned_text = clean_json_text(raw_text)
+                    cleaned_text = stripped + "}"
 
             # 4. Parse JSON
             data = json.loads(cleaned_text)
@@ -144,7 +162,8 @@ class BaseLLMClient(ABC):
 
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             print(f"[ERROR] JSON Parsing Failed: {e}")
-            print(f"[Raw Text was]: {raw_text}")
+            print(f"[Raw Text was]: {repr(raw_text)}")
+            print(f"[Attempted to Parse]: {repr(cleaned_text)}")
             return 0.0
         except Exception as e:
             print(f"[ERROR] General Failure: {e}")
