@@ -5,20 +5,34 @@ from torch import nn
 from torch import distributions
 from torch.nn import functional as F
 
+from pure_rl.utils.policy import Policy
+
 class Rollout():
 
-    def __init__(self, env : gym.Env, agent : nn.Module, iterations : int = 1024):
+    def __init__(self, env : gym.Env, agent : Policy, iterations : int = 1024):
         self.env = env
         self.agent = agent
         self.iterations = iterations
-        self.returns = None
-        self.values = None
-        self.advantages = None
+
+        if self.agent.rollout != self:
+            raise Exception("Rollout's agent's rollout must be same as rollout, very simple...")
 
 
     def calculate_returns(self, rewards : torch.Tensor) -> torch.Tensor :
+        G = torch.zeros_like(rewards)
+        discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(len(rewards))))s
 
-        return 
+        for t in range(len(rewards)):
+            G[t] = (rewards[t:]*discounts[:len(rewards)-t]).sum()
+
+        return G
+    
+    def calculate_advantages(self, returns : torch.Tensor, values : torch.Tensor) -> torch.Tensor :
+        #
+        advantages = returns - values
+        # Normalize the advantage
+        self.advantages = (advantages - advantages.mean()) / advantages.std()
+        return self.advantages
 
 
     def forward_pass(self):
@@ -39,21 +53,16 @@ class Rollout():
             # Store log probability of the selected action.
             log_probs.append(dist.log_prob(action))
             values.append(value_pred)
-            reward = self.env.step(action.item())[1]
+            state, reward, terminated, truncated, _ = self.env.step(action.item())
+            done = terminated or truncated
             rewards.append(reward)
             episode_reward += float(reward)
 
         # Convert to tensors and calculate advantages (returns - values).
         states = torch.cat(states)
+        actions = torch.cat(actions)
         log_probs, values, rewards = torch.cat(log_probs), torch.cat(values).squeeze(-1), torch.cat(rewards)
         returns = self.calculate_returns(rewards)
-        advantages = returns - values
+        advantages = self.calculate_advantages(returns, values)
 
-        return episode_reward, states, torch.cat(actions), log_probs, advantages, returns
-
-    def compute_advantages(self) -> torch.Tensor :
-        #Returns are just discounted rewards as was visible in equation 1
-        advantages = self.returns - self.values
-        # Normalize the advantage
-        self.advantages = (advantages - advantages.mean()) / advantages.std()
-        return self.advantages
+        return episode_reward, states, actions, log_probs, advantages, returns
