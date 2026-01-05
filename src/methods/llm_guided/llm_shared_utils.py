@@ -175,7 +175,7 @@ class BaseLLMClient(ABC):
 
             # 5. Standardized Printing
             if verbose:
-                print(f"\n[Raw LLM Output]:\n{cleaned_text}")
+                # removed because below the cleaned version print(f"\n[Raw LLM Output]:\n{cleaned_text}")
                 print("-" * 40)
                 # the two envs have different keys
                 # iterate over keys to handle both DoorKey (check_inventory) and Empty (reasoning)
