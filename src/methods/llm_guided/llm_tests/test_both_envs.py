@@ -20,7 +20,7 @@ if __name__ == "__main__":
         # 1. Init Real Client with DoorKey Prompt
         dk_real = Phi35LLMClient(debug=True, system_prompt=DOOR_KEY_SYSTEM_PROMPT)
         # 2. Wrap with Caching/Guardrails
-        dk_wrapper = RobustCachedLLMClient(dk_real, cache_path="test_DOORKEY_real.json", voting_samples=3)
+        dk_wrapper = RobustCachedLLMClient(dk_real, cache_path="test_DOORKEY_real.json", voting_samples=3, mode="DOORKEY")
         
         # Check Mode Detection
         print(f"   -> Detected Mode: {dk_wrapper.mode}")
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         empty_real = Phi35LLMClient(debug=True, system_prompt=EMPTY_SYSTEM_PROMPT)
         
         # 2. Wrap with Caching/Guardrails
-        empty_wrapper = RobustCachedLLMClient(empty_real, cache_path="test_EMPTY_real.json", voting_samples=3)
+        empty_wrapper = RobustCachedLLMClient(empty_real, cache_path="test_EMPTY_real.json", voting_samples=3, mode="EMPTY")
 
         # Check Mode Detection
         print(f"   -> Detected Mode: {empty_wrapper.mode}")
