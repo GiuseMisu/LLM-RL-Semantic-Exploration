@@ -83,7 +83,7 @@ def train_ppo_with_llm(
         textualizer_fn=textualizer_fn,
         llm_weight=llm_weight,
         verbose=verbose,
-        max_steps=150
+        max_steps=250 #250
     )
     env = env_fn()
     
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         use_llm=True,
         llm_backend='phi',
         llm_weight=1.0, 
-        epochs=10,
+        epochs=50,
         verbose=False, 
         voting_samples=3
     )

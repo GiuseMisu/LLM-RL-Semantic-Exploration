@@ -49,8 +49,8 @@ class LLMRewardWrapper(gym.Wrapper):
         self.verbose = verbose
                
         # Statistics tracking => might be usefull for different LLM strategies
-        self.total_env_reward = 0.0
-        self.total_llm_reward = 0.0
+        self.episode_env_reward = 0.0
+        self.episode_llm_reward = 0.0
         self.episode_final_reward = 0.0
         self.episode_step_count = 0
 
@@ -106,15 +106,19 @@ class LLMRewardWrapper(gym.Wrapper):
                 generate_explanation=False # reasoning activation
             )
         
-        if llm_reward < 0:
-            # LLM gives negative reward is important to preserve them -> max removes them
-            final_reward = self.llm_weight * llm_reward
+        #print to show when env returned reward != 0
+        if env_reward != 0:
+            print(f"===> [SOLVED] Step: {self.episode_step_count} / Env reward: {env_reward} / Final Reward: {100.0 + (env_reward*100)}")
+            # IF ENV RETURNED A REWARD => The agent solved the environment goal
+            # REWIRE THE REWARD HERE: Make it huge so the agent knows this is the ultimate goal
+            final_reward = 100.0 + (env_reward*100)  #aggiungi original reward che premia la velocita oltre a il completamento
         else:
-            final_reward = max(env_reward, self.llm_weight * llm_reward)
-        
+            # LLM gives zero use the llm reward only
+            final_reward = self.llm_weight * llm_reward
+            
         # Track statistics
-        self.total_env_reward += env_reward
-        self.total_llm_reward += llm_reward
+        self.episode_env_reward += env_reward
+        self.episode_llm_reward += llm_reward
         self.episode_final_reward += final_reward
         self.episode_step_count += 1
         
@@ -123,8 +127,8 @@ class LLMRewardWrapper(gym.Wrapper):
         info['llm_reward'] = llm_reward
         info['final_reward'] = final_reward
 
-        print(f"[LLMRwrdWrp] step:{self.episode_step_count:3d} |Env: {int(env_reward):1d} / LLM: {llm_reward:5.2f} / Final: {final_reward:5.2f}")
-        
+        #print(f"[LLMRwrdWrp] step:{self.episode_step_count:3d} |Env: {int(env_reward):1d} / LLM: {llm_reward:5.2f} / Final: {final_reward:5.2f}")
+
         return image_obs, final_reward, terminated, truncated, info
     
     def _save_episode_stats(self):
