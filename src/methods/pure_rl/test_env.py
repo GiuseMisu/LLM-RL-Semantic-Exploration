@@ -56,6 +56,9 @@ def main():
     # Train the environment
     policy.trainer()
     
+    # load a trained version of the environment
+    policy.load()
+
     # Evaluate the Environment
     policy.eval()
     

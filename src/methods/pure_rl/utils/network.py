@@ -23,3 +23,10 @@ class BaseNet(nn.Module):
         x = self.dropout(x)
         x = self.L3(x)
         return x
+
+"""
+Same but Convolutional
+"""    
+class CNN(nn.Module):
+    def __init__(self):
+        super().__init__
