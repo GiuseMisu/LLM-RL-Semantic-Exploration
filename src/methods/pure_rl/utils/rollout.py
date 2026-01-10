@@ -5,7 +5,7 @@ from torch import nn
 from torch import distributions
 from torch.nn import functional as F
 
-from utils.policy import Policy
+from src.methods.pure_rl.utils.policy import Policy
 
 class Rollout():
 

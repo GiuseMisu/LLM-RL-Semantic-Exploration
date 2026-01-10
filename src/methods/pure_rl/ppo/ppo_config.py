@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import gymnasium as gym
 
-from utils.network import BaseNet
-from utils.policy import Policy
-from utils.rollout import Rollout
+from src.methods.pure_rl.utils.network import BaseNet
+from src.methods.pure_rl.utils.policy import Policy
+from src.methods.pure_rl.utils.rollout import Rollout
 
 """
 Policy Gradient for PPO
@@ -17,7 +17,13 @@ cite: https://medium.com/@felix.verstraete/mastering-proximal-policy-optimizatio
 """
 class PPO(Policy):
     
-    def __init__(self, env : gym.Env, gamma : float = 0.99, epsilon : float = 0.99, input_dim : int = 8, output_dim : int = 4, epochs : int = 100):
+    def __init__(
+            self, env : gym.Env, 
+            gamma : float = 0.99, 
+            epsilon : float = 0.2,  # old 0.99
+            input_dim : int = 8, 
+            output_dim : int = 4, 
+            epochs : int = 100):
 
         super().__init__(env=env, gamma=gamma, epsilon=epsilon)
 
@@ -64,9 +70,8 @@ class PPO(Policy):
     def get_loss(self, surrogate_loss : torch.Tensor, entropy : torch.Tensor, returns : torch.Tensor, value_pred : torch.Tensor):
         # We calulate entropy and total policy by equation 2 and 4
         entropy_bonus = self.entropy_coeff * entropy
-        policy_loss = -(surrogate_loss + entropy_bonus).sum()
-        print("IN LOSS", returns.shape, value_pred.shape)
-        value_loss = F.smooth_l1_loss(returns, value_pred).sum()
+        policy_loss = -(surrogate_loss + entropy_bonus).mean()
+        value_loss = F.smooth_l1_loss(returns, value_pred).mean()
         return policy_loss, value_loss
 
     def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor):
@@ -252,9 +257,7 @@ class RecurrentPPO(PPO):
             
             episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
 
-            if e%100 == 0:
-                print(f"running epoch {e}")
-                print(f"episode reward {episode_reward}")
+            print(f"\nEpoch {e+1}/{self.epochs} | Episode Total Reward: {episode_reward:.2f}\n")
 
             self.step(states, actions, log_probs, advantages, returns, eps_sizes)
 

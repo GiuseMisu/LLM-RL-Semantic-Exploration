@@ -19,7 +19,7 @@ class RobustCachedLLMClient(BaseLLMClient):
     3. Physics Guardrails: Prevents rewards for physically impossible actions (e.g., interacting from far away)
     """
 
-    def __init__(self, real_llm_client: BaseLLMClient, cache_path="llm_reward_cache.json", voting_samples=3):
+    def __init__(self, real_llm_client: BaseLLMClient, cache_path="llm_reward_cache.json", voting_samples=3, mode: str = None):
         """
         Args:
             real_llm_client: An instance of GeminiLLMClient, Phi35LLMClient, etc
@@ -37,15 +37,24 @@ class RobustCachedLLMClient(BaseLLMClient):
         # Load existing cache or create fresh
         self.cache = self._load_cache()
 
-        # --- AUTO-DETECT MODE ---
+        # --- DETECT ENV ---
         # check the system prompt to decide which guardrails to apply
-        if "minigrid-empty" in self.client.system_prompt.lower() or "MiniGrid-Empty" in self.client.system_prompt:
-            self.mode = "EMPTY"
-        elif "door-key" in self.client.system_prompt.lower() or "Door-Key" in self.client.system_prompt:
-            self.mode = "DOORKEY"
+        if mode is not None:
+            self.mode = mode.upper()
+            if "empty" in mode.lower() or "minigrid-empty" in mode.lower() :
+                self.mode = "EMPTY"
+            elif "door" in mode.lower()  and "key" in mode.lower()  or "doorkey" in mode.lower() :
+                self.mode = "DOORKEY"
         else:
-            raise Exception("[cached_llm.py] Unrecognized system prompt for guardrail mode")
-        
+            prompt = (self.client.system_prompt or "").lower()
+            if "empty" in prompt or "minigrid-empty" in prompt:
+                self.mode = "EMPTY"
+            elif "door" in prompt and "key" in prompt or "doorkey" in prompt:
+                self.mode = "DOORKEY"
+            else:
+                raise Exception("[cached_llm.py] Unrecognized ENVIRONMENT FROM PROMPT ")
+
+        print(f"[RobustCachedLLMClient] Mode: {self.mode} / Cache: {self.cache_path}")
         # Tracking statistics
         self.stats = {
             "hits": 0,
@@ -233,7 +242,7 @@ if __name__ == "__main__":
         print(e)
     # 2. Wrap it to get the cacged and guardrail version
     cache_name = "test_DOORKEY_PHI_cache.json"
-    cached_client = RobustCachedLLMClient(real_client, cache_path=cache_name, voting_samples=3)
+    cached_client = RobustCachedLLMClient(real_client, cache_path=cache_name, voting_samples=3, mode = "DOORKEY")
 
     #=======================
     # GEMINI TESTS 
@@ -248,7 +257,7 @@ if __name__ == "__main__":
     #     print(e)
     # # 2. Wrap it to get the cacged and guardrail version
     # cache_name="test_DOORKEY_gemini_cache.json"
-    # cached_client = RobustCachedLLMClient(real_client, cache_path=cache_name, voting_samples=3)
+    # cached_client = RobustCachedLLMClient(real_client, cache_path=cache_name, voting_samples=3, mode = "DOORKEY")
    
     # print("\n--- TEST 1: Reachable Key (Expect Valid Reward) ---")
     # # Case A: Reachable Key (Should keep high reward)
