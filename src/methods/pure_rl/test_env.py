@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 
-from ppo.ppo_config import PPO
+from ppo.ppo_config import PPO, RecurrentPPO
 
 
 def save_frames_as_gif(frames, path='./', filename='Policy.gif'):
@@ -51,18 +51,18 @@ def main():
     eval_env = gym.make(env_id, render_mode="rgb_array")
 
     # Define the Policy
-    policy = PPO(env = env, input_dim = 8, output_dim= 4, epochs = 1000, gamma = 0.99, epsilon = 0.2)
+    policy = RecurrentPPO(env = env, output_dim= 4, epochs = 1000, gamma = 0.99, epsilon = 0.2)
 
     # Train the environment
     policy.trainer()
     
     # load a trained version of the environment
-    policy.load()
+    #policy.load()
 
     # Evaluate the Environment
-    policy.eval()
+    #policy.eval()
     
-    play_agent(eval_env, policy)
+    #play_agent(eval_env, policy)
 
 if __name__ == "__main__":
     main()

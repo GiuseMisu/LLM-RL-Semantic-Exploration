@@ -40,6 +40,9 @@ class PPO(Policy):
 
     def forward(self, state : torch.Tensor):
         return self.actor(state), self.critic(state)
+    
+    def get_act(self, state : torch.Tensor):
+        return self.forward(state)
 
     def get_surrogate_loss(self, 
                            actions_log_probability_old : torch.Tensor, 
@@ -62,6 +65,7 @@ class PPO(Policy):
         # We calulate entropy and total policy by equation 2 and 4
         entropy_bonus = self.entropy_coeff * entropy
         policy_loss = -(surrogate_loss + entropy_bonus).sum()
+        print("IN LOSS", returns.shape, value_pred.shape)
         value_loss = F.smooth_l1_loss(returns, value_pred).sum()
         return policy_loss, value_loss
 
@@ -69,7 +73,7 @@ class PPO(Policy):
         # Create DataLoader for mini-batches
         dataset = DataLoader(
             TensorDataset(states, actions, old_log_probs.detach(), advantages, returns),
-            batch_size=self.batch_size, shuffle=False # shuffle=True seems to work better
+            batch_size=self.batch_size, shuffle=True # shuffle=True seems to work better
         )
 
         for _ in range(self.steps):
@@ -129,8 +133,7 @@ class RecurrentPPO(PPO):
             self, 
             env : gym.Env, 
             gamma : float = 0.99, 
-            epsilon : float = 0.99, 
-            input_dim : int = 8, 
+            epsilon : float = 0.99,  
             output_dim : int = 4, 
             encode_dim : int = 8, 
             hidden_dim : int = 64, 
@@ -138,7 +141,7 @@ class RecurrentPPO(PPO):
             recurrence : str = "lstm"
             ):
         
-        super().__init__(env=env, gamma=gamma, epsilon=epsilon, input_dim=input_dim, output_dim=output_dim, epochs=epochs)
+        super().__init__(env=env, gamma=gamma, epsilon=epsilon, input_dim=hidden_dim, output_dim=output_dim, epochs=epochs)
 
         #self.encoder = BaseNet(input_dim, encode_dim) # CNN
 
@@ -151,10 +154,17 @@ class RecurrentPPO(PPO):
             self.recurrent = nn.GRU(encode_dim, hidden_size = self.hidden_dim, batch_first = True)
         
 
-    def forward(self, state : torch.Tensor, cell : torch.Tensor, seq_len : int):
+    def forward(self, state : torch.Tensor, cell : torch.Tensor | tuple[torch.Tensor, torch.Tensor | None] | None = None, seq_len : int = 1):
         
         #x = self.encoder(state) # TODO: forse non serve per input 1-D, per N-D cambiare con CNN e usare flatten
         x = state
+
+        if cell == None:
+            h,c = self.init_cells(1)
+            if c is not None:
+                cell = (h,c)
+            else:
+                cell = h
 
         if seq_len == 1:
             x, cell = self.recurrent(x.unsqueeze(1), cell)
@@ -163,24 +173,64 @@ class RecurrentPPO(PPO):
             x = x.reshape((x.shape[0]//seq_len), seq_len, x.shape[1])
 
             x, cell = self.recurrent(x, cell)
-            x = x.reshape(x.shae[0]*x.shape[1], x.shape[2])
+            x = x.reshape(x.shape[0]*x.shape[1], x.shape[2])
 
         return self.actor(x), self.critic(x), cell
     
-    def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor):
-        # Create DataLoader for mini-batches
-        dataset = DataLoader(
-            TensorDataset(states, actions, old_log_probs.detach(), advantages, returns),
-            batch_size=self.batch_size, shuffle=True
-        )
+    def get_act(self, state : torch.Tensor):
+        a, v, _ = self.forward(state)
+        return a, v
+    
+    def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list):
+        
+        # Create DataLoader for mini-batches    
+        states_per_seq = list(states.split(eps_sizes, dim = 0))
+        actions_per_seq = list(actions.split(eps_sizes, dim = 0))
+        old_log_probs_per_seq = list(old_log_probs.split(eps_sizes, dim = 0))
+        advantages_per_seq = list(advantages.split(eps_sizes, dim = 0))
+        returns_per_seq = list(returns.split(eps_sizes, dim = 0))
 
+        # maximum number of rows among the tensors
+        max_rows = max(tensor.size(0) for tensor in states_per_seq)
+        print(max_rows)
+  
+        for n, _ in enumerate(states_per_seq):
+            sz = states_per_seq[n].size(0)
+            states_per_seq[n] = torch.nn.functional.pad(states_per_seq[n], (0, 0, 0, max_rows - sz))
+            actions_per_seq[n] = torch.nn.functional.pad(actions_per_seq[n], (0, max_rows - sz))
+            old_log_probs_per_seq[n] = torch.nn.functional.pad(old_log_probs_per_seq[n], (0, max_rows - sz))
+            advantages_per_seq[n] = torch.nn.functional.pad(advantages_per_seq[n], (0, max_rows - sz))
+            returns_per_seq[n] = torch.nn.functional.pad(returns_per_seq[n], (0, max_rows - sz))
+
+        # Stack padded tensors
+        states = torch.stack(states_per_seq, dim=0)
+        actions = torch.stack(actions_per_seq, dim=0)
+        old_log_probs = torch.stack(old_log_probs_per_seq, dim=0)
+        advantages = torch.stack(advantages_per_seq, dim=0)
+        returns = torch.stack(returns_per_seq, dim=0)
+
+        dataset = DataLoader(
+             TensorDataset(states.transpose(0,1), actions.transpose(0,1), old_log_probs.detach().transpose(0,1), advantages.transpose(0,1), returns.transpose(0,1)),
+             batch_size=self.batch_size, shuffle=False
+        )        
+        h,c = self.init_cells(states.shape[0])
+        cell = (h, c)
         for _ in range(self.steps):
             j = 0
             for batch in dataset:
+                #print([b.shape for b in batch])
+
                 j+=1
                 batch_states, batch_actions, old_probs, adv, ret = batch
-                action_pred, value_pred = self.forward(batch_states)
-                value_pred = value_pred.squeeze(-1)
+                batch_states, batch_actions, old_probs, adv, ret = batch_states.transpose(0,1), batch_actions.transpose(0,1), old_probs.transpose(0,1), adv.transpose(0,1), ret.transpose(0,1)
+                #print("Batch shape", batch_states.shape)
+                
+                batch_states = batch_states.reshape(batch_states.shape[0]*batch_states.shape[1],-1)
+                action_pred, value_pred, cell = self.forward(batch_states, cell=cell, seq_len=min(self.batch_size, max_rows))
+                
+                value_pred = value_pred.squeeze(-1).view(ret.shape)
+                
+                action_pred = action_pred.view(-1, min(self.batch_size, max_rows), action_pred.shape[1])
 
                 # Calculate new action probabilities and entropy.
                 action_prob = F.softmax(action_pred, dim=-1)
@@ -194,19 +244,19 @@ class RecurrentPPO(PPO):
 
                 # Backpropagate and update weights.
                 self.optimizer.zero_grad()
-                (policy_loss + value_loss).backward()
+                (policy_loss + value_loss).backward(retain_graph=True)
                 self.optimizer.step()
 
     def trainer(self):
         for e in range(self.epochs):
             
-            episode_reward, states, actions, log_probs, advantages, returns, indexes = self.rollout.forward_pass()
+            episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
 
             if e%100 == 0:
                 print(f"running epoch {e}")
                 print(f"episode reward {episode_reward}")
 
-            self.step(states, actions, log_probs, advantages, returns)
+            self.step(states, actions, log_probs, advantages, returns, eps_sizes)
 
     def init_cells(self, num_sequences : int):
         hxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0)

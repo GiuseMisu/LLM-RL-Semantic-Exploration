@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import torch
 from torch import nn
 import gymnasium as gym
@@ -18,4 +19,9 @@ class Policy(nn.Module):
 
     def load(self):
         self.load_state_dict(torch.load("./policy.pkl", weights_only=True))
+
+    @abstractmethod
+    def get_act(self, state):
+        pass
+
 

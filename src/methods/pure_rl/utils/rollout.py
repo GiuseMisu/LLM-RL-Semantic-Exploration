@@ -75,14 +75,14 @@ class Rollout():
         # agent.train() # TODO: Y train before Rollout?
 
         i = 0
-        indexes=[]
+        indexes, eps_sizes = [], []
         while i < self.iterations:
             state_tensor = torch.FloatTensor(state).unsqueeze(0)
             states.append(state_tensor)
 
             with torch.no_grad():
                 # Get action probabilities and value prediction from the agent.
-                action_pred, value_pred = self.agent(state_tensor)
+                action_pred, value_pred = self.agent.get_act(state_tensor)
                 action_prob = F.softmax(action_pred, dim=-1)
                 dist = distributions.Categorical(action_prob)
                 action = dist.sample()
@@ -99,16 +99,19 @@ class Rollout():
                 values.append(torch.zeros_like(values[0]))
                 state, _ = self.env.reset()
                 indexes.append(i) # saves where an episode ends
+                eps_sizes.append(ep_len)
                 episode_reward = 0.
+                ep_len = 0
             elif ep_len >= self.max_episode_len:
                 values.append(value_pred)
                 state, _ = self.env.reset()
                 indexes.append(i) # saves where an episode ends
+                eps_sizes.append(ep_len)
                 episode_reward = 0.
                 ep_len = 0
             else:
                 values.append(value_pred)
-
+            
             rewards.append(torch.FloatTensor([reward]))
             episode_reward += float(reward)
             total_reward += float(reward)
@@ -116,6 +119,7 @@ class Rollout():
             i+=1
             ep_len+=1
 
+        eps_sizes.append(ep_len)
         avg_reward = total_reward/(len(indexes)+1)
         #print(f"average reward {avg_reward}")
 
@@ -126,4 +130,4 @@ class Rollout():
         returns = self.calculate_returns(rewards, indexes)
         advantages = self.calculate_advantages(returns, values)
 
-        return avg_reward, states, actions, log_probs, advantages, returns, indexes
+        return avg_reward, states, actions, log_probs, advantages, returns, eps_sizes
