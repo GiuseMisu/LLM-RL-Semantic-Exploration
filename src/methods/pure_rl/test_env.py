@@ -32,7 +32,7 @@ def play_agent(env, policy):
     done = trunc = False
     while not done and not trunc:
 
-        action, _ = policy(torch.tensor(state))
+        action, _ = policy.get_act(torch.tensor(state).unsqueeze(0))
         env_action = F.softmax(action, dim=-1).argmax().item()
         new_state, reward, done, trunc, _ = env.step(env_action)
         total_reward += reward
@@ -54,15 +54,15 @@ def main():
     policy = RecurrentPPO(env = env, output_dim= 4, epochs = 1000, gamma = 0.99, epsilon = 0.2)
 
     # Train the environment
-    policy.trainer()
+    #policy.trainer()
     
     # load a trained version of the environment
-    #policy.load()
+    policy.load()
 
     # Evaluate the Environment
-    #policy.eval()
+    policy.eval()
     
-    #play_agent(eval_env, policy)
+    play_agent(eval_env, policy)
 
 if __name__ == "__main__":
     main()

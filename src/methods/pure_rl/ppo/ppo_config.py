@@ -7,9 +7,11 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import gymnasium as gym
 
-from src.methods.pure_rl.utils.network import BaseNet
-from src.methods.pure_rl.utils.policy import Policy
-from src.methods.pure_rl.utils.rollout import Rollout
+from utils.network import BaseNet
+from utils.policy import Policy
+from utils.rollout import Rollout
+
+import math
 
 """
 Policy Gradient for PPO
@@ -152,6 +154,7 @@ class RecurrentPPO(PPO):
 
         self.hidden_dim = hidden_dim
         self.recurrence = recurrence
+        self.cell = None
 
         if self.recurrence == "lstm":
             self.recurrent = nn.LSTM(encode_dim, hidden_size = self.hidden_dim, batch_first = True)
@@ -159,17 +162,10 @@ class RecurrentPPO(PPO):
             self.recurrent = nn.GRU(encode_dim, hidden_size = self.hidden_dim, batch_first = True)
         
 
-    def forward(self, state : torch.Tensor, cell : torch.Tensor | tuple[torch.Tensor, torch.Tensor | None] | None = None, seq_len : int = 1):
+    def forward(self, state : torch.Tensor, cell : torch.Tensor | tuple[torch.Tensor, torch.Tensor | None], seq_len : int = 1):
         
         #x = self.encoder(state) # TODO: forse non serve per input 1-D, per N-D cambiare con CNN e usare flatten
         x = state
-
-        if cell == None:
-            h,c = self.init_cells(1)
-            if c is not None:
-                cell = (h,c)
-            else:
-                cell = h
 
         if seq_len == 1:
             x, cell = self.recurrent(x.unsqueeze(1), cell)
@@ -183,7 +179,14 @@ class RecurrentPPO(PPO):
         return self.actor(x), self.critic(x), cell
     
     def get_act(self, state : torch.Tensor):
-        a, v, _ = self.forward(state)
+        if self.cell == None:
+            h,c = self.init_cells(1)
+            if c is not None:
+                self.cell = (h,c)
+            else:
+                self.cell = h
+        a, v, cell = self.forward(state, self.cell)
+        self.cell = cell
         return a, v
     
     def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list):
@@ -197,7 +200,7 @@ class RecurrentPPO(PPO):
 
         # maximum number of rows among the tensors
         max_rows = max(tensor.size(0) for tensor in states_per_seq)
-        print(max_rows)
+        max_rows = math.ceil(max_rows/self.batch_size) * self.batch_size
   
         for n, _ in enumerate(states_per_seq):
             sz = states_per_seq[n].size(0)
@@ -218,19 +221,20 @@ class RecurrentPPO(PPO):
              TensorDataset(states.transpose(0,1), actions.transpose(0,1), old_log_probs.detach().transpose(0,1), advantages.transpose(0,1), returns.transpose(0,1)),
              batch_size=self.batch_size, shuffle=False
         )        
+
         h,c = self.init_cells(states.shape[0])
         cell = (h, c)
+
         for _ in range(self.steps):
             j = 0
             for batch in dataset:
-                #print([b.shape for b in batch])
 
                 j+=1
                 batch_states, batch_actions, old_probs, adv, ret = batch
                 batch_states, batch_actions, old_probs, adv, ret = batch_states.transpose(0,1), batch_actions.transpose(0,1), old_probs.transpose(0,1), adv.transpose(0,1), ret.transpose(0,1)
-                #print("Batch shape", batch_states.shape)
-                
+
                 batch_states = batch_states.reshape(batch_states.shape[0]*batch_states.shape[1],-1)
+
                 action_pred, value_pred, cell = self.forward(batch_states, cell=cell, seq_len=min(self.batch_size, max_rows))
                 
                 value_pred = value_pred.squeeze(-1).view(ret.shape)
@@ -253,11 +257,18 @@ class RecurrentPPO(PPO):
                 self.optimizer.step()
 
     def trainer(self):
+        max_rew = -float("inf")
         for e in range(self.epochs):
             
             episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
+            self.cell = None
 
             print(f"\nEpoch {e+1}/{self.epochs} | Episode Total Reward: {episode_reward:.2f}\n")
+            if episode_reward > 0 and episode_reward > max_rew:
+                print(f"Good reward {episode_reward}, at epoch {e}, saving...")
+                max_rew = episode_reward
+                self.save() 
+
 
             self.step(states, actions, log_probs, advantages, returns, eps_sizes)
 
