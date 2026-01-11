@@ -9,10 +9,9 @@ import gymnasium as gym
 
 import numpy as np
 
-from utils.network import BaseNet
-from utils.network import MiniGridCNN
-from utils.policy import Policy
-from utils.rollout import Rollout
+from src.methods.pure_rl.utils.network import BaseNet, MiniGridCNN
+from src.methods.pure_rl.utils.policy import Policy
+from src.methods.pure_rl.utils.rollout import Rollout
 
 import math
 
