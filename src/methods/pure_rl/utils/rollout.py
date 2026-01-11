@@ -48,7 +48,13 @@ class Rollout():
         with torch.no_grad():
             advantages = returns - values
             # Normalize the advantage
-            advantages = (advantages - advantages.mean()) / advantages.std()
+            std = advantages.std()
+            if std > 1e-8:
+                advantages = (advantages - advantages.mean()) / std
+            else:
+                #prevent division by zero
+                advantages = advantages - advantages.mean()  # Just center, don't normalize
+        
         
         return advantages
     
@@ -77,6 +83,8 @@ class Rollout():
         i = 0
         indexes, eps_sizes = [], []
         while i < self.iterations:
+
+            # for MiniGrid 7x7x3 input MiniGrid: (7, 7, 3) -> (1, 7, 7, 3)
             state_tensor = torch.FloatTensor(state).unsqueeze(0)
             states.append(state_tensor)
 
@@ -94,8 +102,14 @@ class Rollout():
             
             state, reward, terminated, truncated, _ = self.env.step(action.item())
             done = terminated or truncated
-
+           
             if done:
+                #debug mid epoch print
+                #if terminated:
+                    #print(f"Episode: {i+1}/{self.iterations} env solved, Reward {reward}")
+                # if truncated:
+                #     print(f"Episode: {i+1}/{self.iterations}: env truncated, Reward {reward}")
+                    
                 values.append(torch.zeros_like(values[0]))
                 state, _ = self.env.reset()
                 indexes.append(i) # saves where an episode ends

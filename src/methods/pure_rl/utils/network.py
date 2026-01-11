@@ -24,9 +24,34 @@ class BaseNet(nn.Module):
         x = self.L3(x)
         return x
 
-"""
-Same but Convolutional
-"""    
-class CNN(nn.Module):
-    def __init__(self):
-        super().__init__
+# In network.py
+class MiniGridCNN(nn.Module):
+    #CNN encoder for MiniGrid 7x7x3 
+    # input: (batch, 7, 7, 3)
+    # output: (batch, output_dim)
+
+    def __init__(self, output_dim: int = 128):
+        super().__init__()
+        
+        # Input: (batch, 3, 7, 7) - channels first for PyTorch
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=2, stride=1)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=2, stride=1)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=2, stride=1)
+        
+        # Calculate flattened size: (7 -> 6 -> 5 -> 4) with kernel=2, stride=1
+        self.fc = nn.Linear(64 * 4 * 4, output_dim)
+        self.relu = nn.ReLU()
+        
+    def forward(self, x):
+        # x shape: (batch, 7, 7, 3) from MiniGrid
+        # Permute to (batch, 3, 7, 7) for 2d Convolution
+        x = x.permute(0, 3, 1, 2)
+        
+        x = self.relu(self.conv1(x))  # -> (batch, 16, 6, 6)
+        x = self.relu(self.conv2(x))  # -> (batch, 32, 5, 5)
+        x = self.relu(self.conv3(x))  # -> (batch, 64, 4, 4)
+        
+        x = x.reshape(x.size(0), -1)  # Flatten: (batch, 64*4*4)
+        x = self.relu(self.fc(x))     # -> (batch, output_dim)
+        
+        return x
