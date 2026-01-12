@@ -35,6 +35,7 @@ def train_ppo_with_llm(
     llm_backend='phi',  # 'phi' or 'gemini'
     llm_weight=1.0,
     epochs=1000,
+    max_steps=250,
     cache_name=None,
     verbose=False,
     voting_samples=3
@@ -83,27 +84,25 @@ def train_ppo_with_llm(
         textualizer_fn=textualizer_fn,
         llm_weight=llm_weight,
         verbose=verbose,
-        max_steps=250 #250
+        max_steps=max_steps #250
     )
     env = env_fn()
     
     # === Setup PPO ===
-    # MiniGrid observation is 7x7x3 = 147 features when flattened
-    obs_shape = env.observation_space.shape
-    input_dim = obs_shape[0] * obs_shape[1] * obs_shape[2]  # 7*7*3 = 147
-    output_dim = env.action_space.n  # Usually 7 for MiniGrid
 
     policy = PPO(
         env=env,
         gamma=0.99,
         epsilon=0.2,
-        input_dim=input_dim,
-        output_dim=output_dim,
-        epochs=epochs
+        epochs=epochs,
+        model_name=f"PPO_{env_id.split('-')[1]}_llm_guided",
     )
     
     # === Train ===
-    policy.trainer()
+    policy.trainer(
+        early_stopping_threshold= 195,  # Stop if avg reward reaches 95%
+        window_size=10  # Average over last 10 epochs
+    )
 
     # IMPORTANT: Finalize the last episode (otherwise it's not saved)
     if use_llm and hasattr(env, 'finalize_episode'):
@@ -135,7 +134,8 @@ if __name__ == "__main__":
         use_llm=True,
         llm_backend='phi',
         llm_weight=1.0, 
-        epochs=50,
+        epochs=100,
+        max_steps=250,
         verbose=False, 
         voting_samples=3
     )
