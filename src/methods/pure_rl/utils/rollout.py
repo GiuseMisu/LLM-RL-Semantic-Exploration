@@ -93,6 +93,12 @@ class Rollout():
 
             
             state, reward, terminated, truncated, _ = self.env.step(action.item())
+            
+            episode_reward += float(reward)
+            total_reward += float(reward)
+            avg_reward = total_reward/(len(indexes)+1)
+            
+            reward = self.agent.augment_reward(float(reward))
             done = terminated or truncated
 
             if done:
@@ -113,16 +119,12 @@ class Rollout():
                 values.append(value_pred)
             
             rewards.append(torch.FloatTensor([reward]))
-            episode_reward += float(reward)
-            total_reward += float(reward)
                 
             i+=1
             ep_len+=1
 
         eps_sizes.append(ep_len)
-        avg_reward = total_reward/(len(indexes)+1)
-        #print(f"average reward {avg_reward}")
-
+        
         # Convert to tensors and calculate advantages (returns - values).
         states = torch.cat(states)
         actions = torch.cat(actions)

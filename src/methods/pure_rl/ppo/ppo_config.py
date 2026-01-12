@@ -22,17 +22,18 @@ class PPO(Policy):
     def __init__(
             self, env : gym.Env, 
             gamma : float = 0.99, 
-            epsilon : float = 0.2,  # old 0.99
+            epsilon : float = 0.2,
             input_dim : int = 8, 
             output_dim : int = 4, 
-            epochs : int = 100):
+            epochs : int = 100
+            ):
 
         super().__init__(env=env, gamma=gamma, epsilon=epsilon)
 
         self.name = 'PPO'
 
-        self.actor = BaseNet(input_dim, output_dim) # CNN
-        self.critic = BaseNet(input_dim) # CNN
+        self.actor = BaseNet(input_dim, output_dim)
+        self.critic = BaseNet(input_dim)
 
         # hyperparameters
         self.lr = 1e-3
@@ -62,7 +63,6 @@ class PPO(Policy):
 
         policy_ratio = (actions_log_probability_new - actions_log_probability_old).exp()
 
-        # TODO: write a meaningful comment
         surrogate_loss_full = policy_ratio * advantages
         surrogate_loss_clamped = torch.clamp(policy_ratio, min=1.0-self.epsilon, max=1.0+self.epsilon) * advantages
         surrogate_loss = torch.min(surrogate_loss_full, surrogate_loss_clamped)
@@ -111,14 +111,13 @@ class PPO(Policy):
         for e in range(self.epochs):
             
             episode_reward, states, actions, log_probs, advantages, returns, _ = self.rollout.forward_pass()
+
+            print(f"\nEpoch {e+1}/{self.epochs} | Episode Average Reward: {episode_reward:.2f}\n")
+
             if episode_reward > 0 and episode_reward > max_rew:
                 print(f"Good reward {episode_reward}, at epoch {e}, saving...")
                 max_rew = episode_reward
                 self.save() 
-
-            if e%100 == 0:
-                print(f"running epoch {e}")
-                print(f"avg reward {episode_reward}")
 
             self.step(states, actions, log_probs, advantages, returns)
 
@@ -150,7 +149,10 @@ class RecurrentPPO(PPO):
         
         super().__init__(env=env, gamma=gamma, epsilon=epsilon, input_dim=hidden_dim, output_dim=output_dim, epochs=epochs)
 
-        #self.encoder = BaseNet(input_dim, encode_dim) # CNN
+        # TODO: for 3D state it will need CNN Encoder
+        #self.encoder = CNN(input_dim, encode_dim) # CNN
+
+        self.name = "RPPO"
 
         self.hidden_dim = hidden_dim
         self.recurrence = recurrence
@@ -191,6 +193,72 @@ class RecurrentPPO(PPO):
     
     def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list):
         
+        dataset = self.batch_episodes(states, actions, old_log_probs, advantages, returns, eps_sizes)
+
+        h,c = self.init_cells(len(eps_sizes))
+        if c is not None:
+            cell = (h, c)
+        else:
+            cell = h
+
+        for _ in range(self.steps):
+            j = 0
+            for batch in dataset:
+
+                j+=1
+                batch_states, batch_actions, old_probs, adv, ret = batch
+                batch_states, batch_actions, old_probs, adv, ret = batch_states.transpose(0,1), batch_actions.transpose(0,1), old_probs.transpose(0,1), adv.transpose(0,1), ret.transpose(0,1)
+
+                batch_states = batch_states.reshape(batch_states.shape[0]*batch_states.shape[1],-1)
+
+                action_pred, value_pred, cell = self.forward(batch_states, cell=cell, seq_len=self.batch_size)
+                
+                value_pred = value_pred.squeeze(-1).view(ret.shape)
+                
+                action_pred = action_pred.view(-1, self.batch_size, action_pred.shape[1])
+
+                # Calculate new action probabilities and entropy.
+                action_prob = F.softmax(action_pred, dim=-1)
+                dist = distributions.Categorical(action_prob)
+                new_log_probs = dist.log_prob(batch_actions)
+                entropy = dist.entropy()
+
+                # Calculate policy loss (surrogate loss) and value loss.
+                surrogate_loss = self.get_surrogate_loss(old_probs, new_log_probs, adv)
+                policy_loss, value_loss = self.get_loss(surrogate_loss, entropy, ret, value_pred)
+
+                # Backpropagate and update weights.
+                self.optimizer.zero_grad()
+                (policy_loss + value_loss).backward(retain_graph=True)
+                self.optimizer.step()
+
+    def trainer(self):
+        max_rew = -float("inf")
+        for e in range(self.epochs):
+            
+            episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
+            self.cell = None
+
+            print(f"\nEpoch {e+1}/{self.epochs} | Episode Average Reward: {episode_reward:.2f}\n")
+            if episode_reward > 0 and episode_reward > max_rew:
+                print(f"Good reward {episode_reward}, at epoch {e}, saving...")
+                max_rew = episode_reward
+                self.save() 
+
+            self.step(states, actions, log_probs, advantages, returns, eps_sizes)
+
+    def init_cells(self, num_sequences : int):
+        hxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0)
+        cxs = None
+        if self.recurrence == "lstm":
+            cxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0)
+        return hxs, cxs
+    
+    def batch_episodes(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor, advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list):
+        # Prepares data for recurrent network training:
+        #   -episodes are stacked on top of each other
+        #   -length is padded to be multiple of batch size
+        # TODO: (possibly) make more efficient
         # Create DataLoader for mini-batches    
         states_per_seq = list(states.split(eps_sizes, dim = 0))
         actions_per_seq = list(actions.split(eps_sizes, dim = 0))
@@ -220,63 +288,70 @@ class RecurrentPPO(PPO):
         dataset = DataLoader(
              TensorDataset(states.transpose(0,1), actions.transpose(0,1), old_log_probs.detach().transpose(0,1), advantages.transpose(0,1), returns.transpose(0,1)),
              batch_size=self.batch_size, shuffle=False
-        )        
-
-        h,c = self.init_cells(states.shape[0])
-        cell = (h, c)
-
-        for _ in range(self.steps):
-            j = 0
-            for batch in dataset:
-
-                j+=1
-                batch_states, batch_actions, old_probs, adv, ret = batch
-                batch_states, batch_actions, old_probs, adv, ret = batch_states.transpose(0,1), batch_actions.transpose(0,1), old_probs.transpose(0,1), adv.transpose(0,1), ret.transpose(0,1)
-
-                batch_states = batch_states.reshape(batch_states.shape[0]*batch_states.shape[1],-1)
-
-                action_pred, value_pred, cell = self.forward(batch_states, cell=cell, seq_len=min(self.batch_size, max_rows))
-                
-                value_pred = value_pred.squeeze(-1).view(ret.shape)
-                
-                action_pred = action_pred.view(-1, min(self.batch_size, max_rows), action_pred.shape[1])
-
-                # Calculate new action probabilities and entropy.
-                action_prob = F.softmax(action_pred, dim=-1)
-                dist = distributions.Categorical(action_prob)
-                new_log_probs = dist.log_prob(batch_actions)
-                entropy = dist.entropy()
-
-                # Calculate policy loss (surrogate loss) and value loss.
-                surrogate_loss = self.get_surrogate_loss(old_probs, new_log_probs, adv)
-                policy_loss, value_loss = self.get_loss(surrogate_loss, entropy, ret, value_pred)
-
-                # Backpropagate and update weights.
-                self.optimizer.zero_grad()
-                (policy_loss + value_loss).backward(retain_graph=True)
-                self.optimizer.step()
-
-    def trainer(self):
-        max_rew = -float("inf")
-        for e in range(self.epochs):
-            
-            episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
-            self.cell = None
-
-            print(f"\nEpoch {e+1}/{self.epochs} | Episode Total Reward: {episode_reward:.2f}\n")
-            if episode_reward > 0 and episode_reward > max_rew:
-                print(f"Good reward {episode_reward}, at epoch {e}, saving...")
-                max_rew = episode_reward
-                self.save() 
-
-
-            self.step(states, actions, log_probs, advantages, returns, eps_sizes)
-
-    def init_cells(self, num_sequences : int):
-        hxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0)
-        cxs = None
-        if self.recurrence == "lstm":
-            cxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0)
-        return hxs, cxs
+        )
+        
+        return dataset
     
-    #def batch_episodes(self, )
+"""
+PPO but Random Network Distillation.
+A version of PPO better suited for sparse reward environments
+cite: https://www.emergentmind.com/topics/random-network-distillation-rnd
+"""
+class RNDPPO(PPO):
+    def __init__(
+            self, env : gym.Env, 
+            gamma : float = 0.99, 
+            epsilon : float = 0.2,
+            input_dim : int = 8, 
+            output_dim : int = 4, 
+            epochs : int = 100
+            ):
+
+        super().__init__(env=env, gamma=gamma, epsilon=epsilon, input_dim=input_dim, output_dim=output_dim)
+
+        self.name = 'RNDPPO'
+
+        # TODO: Like in RPPO for 3D state it will need CNN Encoder
+        #self.encoder = ...
+
+        self.random_state_network = BaseNet(input_dim, input_dim)
+        self.intrinsic_value_head = BaseNet(input_dim)
+
+        # hyperparameters
+        self.lr = 1e-3
+        self.epochs = epochs
+        self.batch_size = 128
+        self.entropy_coeff = 0.02
+        self.steps = 10
+        # ...
+
+        self.intrinsic_reward = None
+
+        self.optimizer = Adam(self.parameters(), lr = self.lr)
+
+        self.rollout = Rollout(self.env, self)
+
+        
+    def forward(self, state : torch.Tensor):
+        # encoded_state = self.encoder(state)
+        action = self.actor(state)  
+        # action = self.actor(encoded_state)
+        with torch.no_grad():
+            self.random_state_network.eval()
+            random_state = self.random_state_network(state)
+
+        extrinsic_value = self.critic(state) # self.critic(encoded_state)
+        intrinsic_value = self.intrinsic_value_head(random_state)
+
+        self.intrinsic_reward = F.mse_loss(state, random_state).item()
+
+        return action, extrinsic_value+intrinsic_value
+    
+    def augment_reward(self, reward: float):
+        if self.intrinsic_reward is None:
+            raise TypeError(f"Forward Pass required before computing full reward")
+        
+        augmented_reward = self.intrinsic_reward+reward
+        self.intrinsic_reward = None
+
+        return augmented_reward
