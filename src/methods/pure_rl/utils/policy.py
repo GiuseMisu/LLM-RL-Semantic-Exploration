@@ -20,6 +20,9 @@ class Policy(nn.Module):
     def load(self):
         self.load_state_dict(torch.load("./policy.pkl", weights_only=True))
 
+    def augment_reward(self, reward : float):
+        return reward
+
     @abstractmethod
     def get_act(self, state):
         pass
