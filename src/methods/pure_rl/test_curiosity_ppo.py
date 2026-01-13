@@ -20,7 +20,7 @@ sys.path.append('../../../')
 sys.path.append('./')
 
 from src.common.env_setup import make_minigrid_env
-from ppo.ppo_config import PPO
+from ppo.ppo_config import RNDPPO
 
 
 def save_frames_as_gif(frames, path='./', filename='Policy.gif'):
@@ -99,7 +99,7 @@ def main():
     # # Create the evaluation env
     # eval_env = gym.make(env_id, render_mode="rgb_array")
 
-    env_id = "MiniGrid-DoorKey-8x8-v0"
+    env_id = "MiniGrid-Empty-8x8-v0"
     #env_id = "MiniGrid-DoorKey-5x5-v0"
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
@@ -113,12 +113,12 @@ def main():
     
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
-    policy = PPO(env = env, 
+    policy = RNDPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 50, 
+                          epochs = 100, 
                           gamma = 0.99, 
                           epsilon = 0.2,
-                          model_name="PPO"
+                          model_name="RNDPPO"
                           )
 
     # Train the environment

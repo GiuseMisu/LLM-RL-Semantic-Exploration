@@ -17,7 +17,7 @@ class Policy(nn.Module):
         self.gamma = gamma
         self.epsilon = epsilon
         self._lambda = 0.5
-
+        self.name = model_name
         self.model_path = f"./{model_name}.pkl"
 
     def save(self):

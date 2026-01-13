@@ -11,12 +11,14 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 
 #PURE RL APPROACH NEEDS ImgObsWrapper
 from minigrid.wrappers import ImgObsWrapper
+from minigrid import register_minigrid_envs
+register_minigrid_envs()
 
 # LLM SCALAR-REWARD WRAPPER 
 from src.methods.llm_guided.llm_reward_wrapper import LLMRewardWrapper
 
 # LLM EUREKA APPROACH WRAPPER
-from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     
+#from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     
 
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -39,7 +41,7 @@ def make_minigrid_env(
         verbose=False,
 
         # PARAM FOR LLM-EUREKA APPROACH
-        eureka_reward_code: Optional[str] = None
+        #eureka_reward_code: Optional[str] = None
         ):
     
     """
@@ -80,10 +82,10 @@ def make_minigrid_env(
 
         #EUREKA APPROACH
         # We wrap with Eureka first (to calculate reward), then ImgObs (for PPO compatibility)
-        elif eureka_reward_code is not None:
-            print(f"[Env Setup] Wrapping environment -> EurekaRewardWrapper for: {env_id}")
-            env = EurekaRewardWrapper(env, eureka_reward_code)
-            env = ImgObsWrapper(env)
+        # elif eureka_reward_code is not None:
+        #     print(f"[Env Setup] Wrapping environment -> EurekaRewardWrapper for: {env_id}")
+        #     env = EurekaRewardWrapper(env, eureka_reward_code)
+        #     env = ImgObsWrapper(env)
 
         else:  
             print(f"[Env Setup] Using PURE RL (no LLM) for: {env_id}")
