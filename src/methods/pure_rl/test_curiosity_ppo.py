@@ -103,7 +103,7 @@ def main():
     #env_id = "MiniGrid-DoorKey-5x5-v0"
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
-    seed = 0 
+    seed = 1
 
     # Create environment using your env_setup.py
     env = make_minigrid_env(env_id=env_id, 
@@ -115,8 +115,9 @@ def main():
     # Define the Policy
     policy = RNDPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 200, 
+                          epochs = 50, 
                           gamma = 0.99, 
+                          gamma_intrinsic = 0.99,  
                           epsilon = 0.2,
                           model_name="RNDPPO"
                           )

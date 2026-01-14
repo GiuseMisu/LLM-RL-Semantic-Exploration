@@ -110,8 +110,8 @@ class Rollout():
            
             if done:
                 #debug mid epoch print
-                #if terminated:
-                    #print(f"Episode: {i+1}/{self.iterations} env solved, Reward {reward}")
+                # if terminated:
+                #     print(f"[ENV SOLVED] Episode: {i+1}/{self.iterations} Reward: {reward}")
                 # if truncated:
                 #     print(f"Episode: {i+1}/{self.iterations}: env truncated, Reward {reward}")
                     
