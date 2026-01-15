@@ -115,7 +115,7 @@ def main():
     # Define the Policy
     policy = RNDPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 200, 
+                          epochs = 50, 
                           gamma = 0.99, 
                           epsilon = 0.2,
                           model_name="RNDPPO"

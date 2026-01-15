@@ -445,25 +445,35 @@ class RNDPPO(PPO):
         
     def forward(self, state : torch.Tensor):
         # Encode state with encoder and random network
+
+        state = F.normalize(state)
         encoded_state = self.encoder(state) 
+
         with torch.no_grad():
             self.random_state_network.eval()
-            random_state = self.random_state_network(state)#.detach() # FIXME? detach does nothing??
-        
-        # print(encoded_state)
-        # print(F.mse_loss(encoded_state, random_state))
-        # sprint(torch.cdist(encoded_state, random_state, p=2).mean())
+            random_state = self.random_state_network(state)
 
+        # print("STATE")
+        # print(f"{torch.max(encoded_state).item():.2f}")
+        # print(f"{torch.max(random_state).item():.2f}")
+                
         # Compute action
         action_logits = self.actor(encoded_state)
+
         # Compute value
         extrinsic_value = self.critic(encoded_state)
-        intrinsic_value = self.intrinsic_value_head(random_state)
+        intrinsic_value = torch.clip(self.intrinsic_value_head(random_state), max=1/(1-self.gamma))
+        
         value = extrinsic_value+intrinsic_value
-
+        # print("VALUE")
+        # print(f"{torch.max(extrinsic_value).item():.2f}")
+        # print(f"{torch.max(intrinsic_value).item():.2f}")
+        
         # Save new intrinsic reward
         with torch.no_grad():
-            self.intrinsic_reward = torch.pow(encoded_state-random_state.T, 2).mean().item()
+            self.intrinsic_reward = torch.clip(torch.pow(encoded_state-random_state.T, 2).mean(), max=1).item()
+            
+        # print(f"REWARD\n{self.intrinsic_reward:.2f}")
 
         return action_logits, value
     
@@ -472,7 +482,7 @@ class RNDPPO(PPO):
             raise TypeError(f"Forward Pass required before computing full reward")
         
         # print(self.intrinsic_reward)
-        augmented_reward = reward+self.reward_weight*self.intrinsic_reward
+        augmented_reward = reward+self.intrinsic_reward
         #print(augmented_reward)
         self.intrinsic_reward = None
 

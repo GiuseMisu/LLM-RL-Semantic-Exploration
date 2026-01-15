@@ -98,7 +98,7 @@ class Rollout():
 
             # Store log probability of the selected action.
             log_probs.append(dist.log_prob(action))
-
+                                    
             state, reward, terminated, truncated, _ = self.env.step(action.item())
             
             episode_reward += float(reward)
