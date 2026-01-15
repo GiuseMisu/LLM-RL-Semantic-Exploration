@@ -410,80 +410,264 @@ class RNDPPO(PPO):
             self, env : gym.Env, 
             gamma : float = 0.99, 
             epsilon : float = 0.2,
-            output_dim : int = 4, 
+            gamma_intrinsic : float = 0.99,  # Separate discount for intrinsic rewards
+            output_dim : int = None,  # Auto-detect from env
             epochs : int = 100,
             model_name : str = "RNDPPO_model"
             ):
 
-        super().__init__(env=env, gamma=gamma, epsilon=epsilon, output_dim=output_dim, model_name=model_name)
+        super().__init__(env=env, gamma=gamma, epsilon=epsilon, epochs=epochs,
+                         output_dim=output_dim, model_name=model_name)
 
-        # TODO: Like in RPPO for 3D state it will need CNN Encoder
-        #self.encoder = ...
+        
+        # RND feature dimension
+        self.rnd_feature_dim = 128
+        
+        # Target Network: Random, FROZEN (never trained)
+        # Produces deterministic random features for states
+        self.rnd_target = MiniGridCNN(output_dim=self.rnd_feature_dim)
 
-        self.random_state_network = MiniGridCNN(output_dim=128)
-        for p in self.random_state_network.parameters():
-            p.requires_grad=False
-        self.intrinsic_value_head = BaseNet(input_dim=128)
+        #Initialize with larger scale for better RND signal
+        for module in self.rnd_target.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                nn.init.orthogonal_(module.weight, gain=1.0)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
 
+        for param in self.rnd_target.parameters():
+            param.requires_grad = False  # Freeze target network        
+
+        # Predictor Network: Trained to predict target network's output
+        self.rnd_predictor = MiniGridCNN(output_dim=self.rnd_feature_dim)
+        # Initialize predictor
+        for module in self.rnd_predictor.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
+
+        #===========the reward from novelty=============
+        # Intrinsic value head: Estimates expected intrinsic returns
+        self.intrinsic_critic = BaseNet(input_dim=128, output_dim=1)
+        
         # hyperparameters
         self.lr = 1e-3
         self.epochs = epochs
         self.batch_size = 128
         self.entropy_coeff = 0.02
-        self.steps = 10
-        self.reward_weight = .05#1e-2 # must be low or norhing happens...
-        # ...
+        self.steps = 10        
 
-        self.intrinsic_reward = None
+        # RND-specific hyperparameters
+        self.intrinsic_reward_coeff = 0.005 # Scale intrinsic rewards
+        self.rnd_loss_coeff = 0.5   # Weight for RND predictor loss
+        self.gamma_intrinsic = gamma_intrinsic # separate discount for intrinsic rewards
+        
+        # statistics for intrinsic reward normalization
+        # without the normalization of the novelty reward it does DIVERGE
+        # different states would have wildly different magnitudes:
+        self.intrinsic_reward_mean = 0.0
+        self.intrinsic_reward_std = 1.0
+        self.intrinsic_reward_count = 0
+        self._m2 = 0.0  # For sum of squared deviations
+        
+        # [debugging] track rewards separately
+        self._debug_intrinsic_rewards = []
+        self._debug_extrinsic_rewards = []
+        self._current_intrinsic_reward = None
 
-        print([parameter[0] for parameter in self.named_parameters() if "random_state_network" not in parameter[0]])
-
-        self.optimizer = Adam([parameter for parameter in self.named_parameters() if "random_state_network" not in parameter[0]], lr = self.lr)
+        # Optimizer: Include predictor network, exclude frozen target network
+        trainable_params = list(self.encoder.parameters()) + \
+                          list(self.actor.parameters()) + \
+                          list(self.critic.parameters()) + \
+                          list(self.rnd_predictor.parameters()) + \
+                          list(self.intrinsic_critic.parameters())        
+        self.optimizer = Adam(trainable_params, lr=self.lr)
 
         self.rollout = Rollout(self.env, self)
+        print(f"[RNDPPO] intrinsic_reward_coeff={self.intrinsic_reward_coeff}, rnd_loss_coeff={self.rnd_loss_coeff}")
 
-        
-    def forward(self, state : torch.Tensor):
-        # Encode state with encoder and random network
-
-        state = F.normalize(state)
-        encoded_state = self.encoder(state) 
-
+    def compute_intrinsic_reward(self, state: torch.Tensor) -> tuple:
+        """
+        CCOMPUTE INTRINSIC REWARD
+        INTRINSIC REWARD = MSE between predictor (ENV) and target outputs (NOVELTY)
+        """
         with torch.no_grad():
-            self.random_state_network.eval()
-            random_state = self.random_state_network(state)
-
-        # print("STATE")
-        # print(f"{torch.max(encoded_state).item():.2f}")
-        # print(f"{torch.max(random_state).item():.2f}")
-                
-        # Compute action
-        action_logits = self.actor(encoded_state)
-
-        # Compute value
-        extrinsic_value = self.critic(encoded_state)
-        intrinsic_value = torch.clip(self.intrinsic_value_head(random_state), max=1/(1-self.gamma))
+            target_features = self.rnd_target(state)        
+        predictor_features = self.rnd_predictor(state)                
+        intrinsic_rewards = ((predictor_features - target_features) ** 2).mean(dim=1) # MSE per sample
         
-        value = extrinsic_value+intrinsic_value
-        # print("VALUE")
-        # print(f"{torch.max(extrinsic_value).item():.2f}")
-        # print(f"{torch.max(intrinsic_value).item():.2f}")
-        
-        # Save new intrinsic reward
-        with torch.no_grad():
-            self.intrinsic_reward = torch.clip(torch.pow(encoded_state-random_state.T, 2).mean(), max=1).item()
+        # ============DEBUG INFO===============
+        if not hasattr(self, '_debug_counter'):
+            self._debug_counter = 0        
+        self._debug_counter += 1
+        # if self._debug_counter % 100 == 0:  # Print every 100 calls
+        #     print(f"\n[RND DEBUG]")
+        #     print(f"  Target features - mean: {target_features.mean().item():.6f}, std: {target_features.std().item():.6f}, min: {target_features.min().item():.6f}, max: {target_features.max().item():.6f}")
+        #     print(f"  Predictor features - mean: {predictor_features.mean().item():.6f}, std: {predictor_features.std().item():.6f}, min: {predictor_features.min().item():.6f}, max: {predictor_features.max().item():.6f}")
+        #     print(f"  Raw intrinsic reward - mean: {intrinsic_rewards.mean().item():.6f}, std: {intrinsic_rewards.std().item():.6f}, min: {intrinsic_rewards.min().item():.6f}, max: {intrinsic_rewards.max().item():.6f}")
+        return intrinsic_rewards, predictor_features, target_features
             
-        # print(f"REWARD\n{self.intrinsic_reward:.2f}")
-
-        return action_logits, value
-    
-    def augment_reward(self, reward: float):
-        if self.intrinsic_reward is None:
-            raise TypeError(f"Forward Pass required before computing full reward")
+    def forward(self, state: torch.Tensor):
+        """
+        Forward pass for action selection and value estimation.
+        Also computes and stores intrinsic reward for augment_reward().
+        """
+        # Encode state for policy
+        encoded_state = self.encoder(state)  # (batch, 128)
         
-        # print(self.intrinsic_reward)
-        augmented_reward = reward+self.intrinsic_reward
-        #print(augmented_reward)
-        self.intrinsic_reward = None
-
+        # Compute action logits and values
+        action_logits = self.actor(encoded_state)
+        extrinsic_value = self.critic(encoded_state) # REWARD FROM ENV
+        intrinsic_value = self.intrinsic_critic(encoded_state) # REWARD FROM NOVELTY
+        
+        # Combined value (for advantage computation)
+        value = extrinsic_value + intrinsic_value
+        
+        # Compute intrinsic reward for this state (used by augment_reward)
+        with torch.no_grad():
+            intrinsic_rewards, _, _ = self.compute_intrinsic_reward(state)
+            # Store for augment_reward (single value for single state)
+            self._current_intrinsic_reward = intrinsic_rewards.mean().item()        
+        return action_logits, value
+        
+    def augment_reward(self, reward: float) -> float:
+        """
+        Augment extrinsic reward (THE ENV REW) with normalized intrinsic reward (THE NOVELTY REW)
+        """
+        if self._current_intrinsic_reward is None:
+            raise RuntimeError("Forward pass required before augment_reward()")
+        
+        raw_intrinsic = self._current_intrinsic_reward
+        
+        # Update running statistics
+        self._update_intrinsic_stats(raw_intrinsic)
+        
+        # Normalize to prevent early explosion
+        # 0.1 to prevent division by tiny numbers
+        effective_std = max(self.intrinsic_reward_std, 0.1)
+        normalized_intrinsic = raw_intrinsic / effective_std
+        
+        # Clip to prevent extreme outliers (keep rewards reasonable)
+        normalized_intrinsic = np.clip(normalized_intrinsic, 0.0, 10.0)
+        
+        # Apply coefficient
+        scaled_intrinsic = self.intrinsic_reward_coeff * normalized_intrinsic
+        
+        # Debug
+        self._debug_extrinsic_rewards.append(reward)
+        self._debug_intrinsic_rewards.append(scaled_intrinsic)
+        
+        augmented_reward = reward + scaled_intrinsic        
+        self._current_intrinsic_reward = None
         return augmented_reward
+
+    def _update_intrinsic_stats(self, intrinsic_reward: float):
+        """
+        algorithm for running mean and std
+        needed to have a intrinsic reward (NOVELTY REWARD) with STABLE distribution
+        """
+        self.intrinsic_reward_count += 1
+
+        # Update RUNNING mean
+        delta = intrinsic_reward - self.intrinsic_reward_mean
+        self.intrinsic_reward_mean += delta / self.intrinsic_reward_count
+
+        # Update RUNNING variance (M2 = sum of squared deviations)
+        delta2 = intrinsic_reward - self.intrinsic_reward_mean
+        self._m2 += delta * delta2
+        
+        if self.intrinsic_reward_count >= 2:
+            variance = self._m2 / (self.intrinsic_reward_count - 1)
+            self.intrinsic_reward_std = np.sqrt(max(variance, 1e-8))
+
+    
+    def compute_rnd_loss(self, states: torch.Tensor) -> torch.Tensor:
+        """
+        Compute RND predictor loss: MSE between predictor and target
+        This trains the predictor to recognize visited states -> SO TO REDUCE THE NOVELTY REWARD
+        """
+        _, predictor_features, target_features = self.compute_intrinsic_reward(states)
+        
+        # MSE loss for predictor training
+        rnd_loss = F.mse_loss(predictor_features, target_features.detach())        
+        return rnd_loss
+    
+    def step(self, states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, 
+             advantages: torch.Tensor, returns: torch.Tensor):
+        """
+        PPO update step with RND predictor training
+        """
+        # Create DataLoader for mini-batches
+        dataset = DataLoader(
+            TensorDataset(states, actions, old_log_probs.detach(), advantages, returns),
+            batch_size=self.batch_size, shuffle=True
+        )
+
+        for _ in range(self.steps):
+            for batch in dataset:
+                batch_states, batch_actions, old_probs, adv, ret = batch
+                
+                # Forward pass
+                action_pred, value_pred = self.forward(batch_states)
+                value_pred = value_pred.squeeze(-1)
+
+                # Calculate new action probabilities and entropy
+                action_prob = F.softmax(action_pred, dim=-1)
+                dist = distributions.Categorical(action_prob)
+                new_log_probs = dist.log_prob(batch_actions)
+                entropy = dist.entropy()
+
+                # PPO losses
+                surrogate_loss = self.get_surrogate_loss(old_probs, new_log_probs, adv)
+                policy_loss, value_loss = self.get_loss(surrogate_loss, entropy, ret, value_pred)
+
+                # RND predictor loss (trains predictor to match target)
+                rnd_loss = self.compute_rnd_loss(batch_states)
+
+                # Total loss
+                total_loss = policy_loss + value_loss + self.rnd_loss_coeff * rnd_loss
+
+                # Backpropagate and update
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                self.optimizer.step()
+
+                    
+    def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
+        """
+        Training loop
+        """
+        max_rew = -float("inf")
+        consecutive_epochs_mean_reward = []
+
+        for e in range(self.epochs):
+            self._debug_intrinsic_rewards = []
+            self._debug_extrinsic_rewards = []
+            
+            episode_reward, states, actions, log_probs, advantages, returns, _ = self.rollout.forward_pass()
+            
+            # DEBUG: Show detail REGARDING THE NOVELTY REWARD 
+            if len(self._debug_intrinsic_rewards) > 0:
+                avg_intr = np.mean(self._debug_intrinsic_rewards)
+                max_intr = np.max(self._debug_intrinsic_rewards) if len(self._debug_intrinsic_rewards) > 0 else 0
+                print(f"Intrinsic Reward (NoveltyRew): avg={avg_intr:.6f}, max={max_intr:.6f}")
+            
+            if episode_reward > 0 and episode_reward > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Avg Reward: {episode_reward:.6f} ==> NEW BEST, saving")
+                max_rew = episode_reward
+                self.save() 
+            else:
+                print(f"Epoch {e+1}/{self.epochs} | Avg Reward: {episode_reward:.6f}")
+
+            consecutive_epochs_mean_reward.append(episode_reward)
+            if len(consecutive_epochs_mean_reward) > window_size:
+                consecutive_epochs_mean_reward.pop(0)
+            
+            if len(consecutive_epochs_mean_reward) == window_size:
+                avg_recent = np.mean(consecutive_epochs_mean_reward)
+                if avg_recent >= early_stopping_threshold:
+                    print(f"\nEARLY STOPPING at epoch {e+1}")
+                    print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
+                    break
+
+            self.step(states, actions, log_probs, advantages, returns)
