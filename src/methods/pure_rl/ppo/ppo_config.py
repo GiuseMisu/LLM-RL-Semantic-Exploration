@@ -38,11 +38,11 @@ class PPO(Policy):
             output_dim = int(env.action_space.n) 
 
         # CNN encoder for MiniGrid observations
-        self.encoder = MiniGridCNN(output_dim=encode_dim).to(self.device)
+        self.encoder = MiniGridCNN(output_dim=encode_dim, device=self.device)
         
         # actor-critic use encoded features (dim = output_dim)
-        self.actor = BaseNet(input_dim=encode_dim, output_dim=output_dim).to(self.device)
-        self.critic = BaseNet(input_dim=encode_dim, output_dim=1).to(self.device)
+        self.actor = BaseNet(input_dim=encode_dim, output_dim=output_dim, device=self.device)
+        self.critic = BaseNet(input_dim=encode_dim, output_dim=1, device=self.device)
         
         # hyperparameters
         self.lr = 1e-3
@@ -116,10 +116,8 @@ class PPO(Policy):
         )
 
         for _ in range(self.steps):
-            j = 0
             for batch in dataset:
-                j+=1
-                batch_states, batch_actions, old_probs, adv, ret = batch.to(self.device)
+                batch_states, batch_actions, old_probs, adv, ret = batch
                 action_pred, value_pred = self.forward(batch_states)
                 value_pred = value_pred.squeeze(-1)
 
@@ -168,7 +166,7 @@ class PPO(Policy):
                     ## Don't save again - best model already saved self.save()  
                     break
 
-            self.step(states, actions, log_probs, advantages, returns)
+            self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device))
 
 """
 PPO but recurrent
@@ -217,13 +215,13 @@ class RecurrentPPO(PPO):
         self.cell = None
 
         if self.recurrence == "lstm":
-            self.recurrent = nn.LSTM(encode_dim, hidden_size = self.hidden_dim, batch_first = True).to(self.device)
+            self.recurrent = nn.LSTM(encode_dim, hidden_size = self.hidden_dim, batch_first = True, device=self.device)
         elif self.recurrence == "gru":
-            self.recurrent = nn.GRU(encode_dim, hidden_size = self.hidden_dim, batch_first = True).to(self.device)
+            self.recurrent = nn.GRU(encode_dim, hidden_size = self.hidden_dim, batch_first = True, device=self.device)
         
         # Re-initialize actor/critic to use hidden_dim (64D) instead of encode_dim
-        self.actor = BaseNet(input_dim=self.hidden_dim, output_dim=output_dim).to(self.device)
-        self.critic = BaseNet(input_dim=self.hidden_dim, output_dim=1).to(self.device)
+        self.actor = BaseNet(input_dim=self.hidden_dim, output_dim=output_dim, device=self.device)
+        self.critic = BaseNet(input_dim=self.hidden_dim, output_dim=1, device=self.device)
         
         # Re-create optimizer to include all new parameters
         self.optimizer = Adam(self.parameters(), lr=self.lr)
@@ -284,7 +282,7 @@ class RecurrentPPO(PPO):
             for batch in dataset:
 
                 j+=1
-                batch_states, batch_actions, old_probs, adv, ret = batch.to(self.device)
+                batch_states, batch_actions, old_probs, adv, ret = batch
                 batch_states, batch_actions, old_probs, adv, ret = (
                     batch_states.transpose(0,1), 
                     batch_actions.transpose(0,1), 
@@ -431,7 +429,7 @@ class RecurrentPPO(PPO):
                     ## Don't save again - best model already saved self.save()  
                     break
             
-            self.step(states, actions, log_probs, advantages, returns, eps_sizes)
+            self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device), eps_sizes)
 
     def init_cells(self, num_sequences : int) -> tuple:
         """
@@ -477,7 +475,7 @@ class RNDPPO(PPO):
         
         # Target Network: Random, FROZEN (never trained)
         # Produces deterministic random features for states
-        self.rnd_target = MiniGridCNN(output_dim=self.rnd_feature_dim).to(self.device)
+        self.rnd_target = MiniGridCNN(output_dim=self.rnd_feature_dim, device=self.device)
 
         #Initialize with larger scale for better RND signal
         for module in self.rnd_target.modules():
@@ -490,7 +488,7 @@ class RNDPPO(PPO):
             param.requires_grad = False  # Freeze target network        
 
         # Predictor Network: Trained to predict target network's output
-        self.rnd_predictor = MiniGridCNN(output_dim=self.rnd_feature_dim).to(self.device)
+        self.rnd_predictor = MiniGridCNN(output_dim=self.rnd_feature_dim, device=self.device)
         # Initialize predictor
         for module in self.rnd_predictor.modules():
             if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
@@ -500,7 +498,7 @@ class RNDPPO(PPO):
 
         #===========the reward from novelty=============
         # Intrinsic value head: Estimates expected intrinsic returns
-        self.intrinsic_critic = BaseNet(input_dim=encode_dim, output_dim=1).to(self.device)
+        self.intrinsic_critic = BaseNet(input_dim=encode_dim, output_dim=1, device=self.device)
         
         # hyperparameters
         self.lr = 1e-3
@@ -635,7 +633,7 @@ class RNDPPO(PPO):
 
         for _ in range(self.steps):
             for batch in dataset:
-                batch_states, batch_actions, old_probs, adv, ret = batch.to(self.device)
+                batch_states, batch_actions, old_probs, adv, ret = batch
                 
                 # Forward pass
                 action_pred, value_pred = self.forward(batch_states)

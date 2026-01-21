@@ -30,7 +30,7 @@ class Rollout():
             start = 0
             for i in indexes:
                 l = i-start+1 # episode length
-                discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(l)))
+                discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(l))).to(self.agent.device)
                 for t in range(l):
                     G[start+t] = (rewards[start+t:i+1]*discounts[:l-t]).sum()
 
@@ -38,7 +38,7 @@ class Rollout():
 
             i = len(rewards)-1
             l = len(rewards)-start
-            discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(l)))            
+            discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(l))).to(self.agent.device)            
             for t in range(l):
                 G[start+t] = (rewards[start+t:i+1]*discounts[:l-t]).sum()
 
@@ -131,7 +131,7 @@ class Rollout():
             else:
                 values.append(value_pred)
             
-            rewards.append(torch.FloatTensor([reward]))
+            rewards.append(torch.FloatTensor([reward]).to(self.agent.device))
                 
             i+=1
             ep_len+=1

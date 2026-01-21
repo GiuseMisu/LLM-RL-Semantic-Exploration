@@ -13,6 +13,8 @@ class Policy(nn.Module):
         super().__init__()
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(torch.cuda.is_available())
+        print(self.device)
         self.to(self.device)
         self.env = env
 
@@ -26,6 +28,7 @@ class Policy(nn.Module):
     def save(self):
         self.to("cpu")
         torch.save(self.state_dict(), self.model_path)
+        self.to(self.device)
 
     def load(self):
         print(f"[LOAD] Loading model from {self.model_path}")
