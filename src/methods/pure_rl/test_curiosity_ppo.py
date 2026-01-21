@@ -99,7 +99,7 @@ def main():
     # # Create the evaluation env
     # eval_env = gym.make(env_id, render_mode="rgb_array")
 
-    env_id = "MiniGrid-DoorKey-5x5-v0"
+    env_id = "MiniGrid-DoorKey-8x8-v0"
     #env_id = "MiniGrid-DoorKey-5x5-v0"
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
@@ -115,7 +115,7 @@ def main():
     # Define the Policy
     policy = RNDPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 50, 
+                          epochs = 200, 
                           gamma = 0.99, 
                           gamma_intrinsic = 0.99,  
                           epsilon = 0.2,

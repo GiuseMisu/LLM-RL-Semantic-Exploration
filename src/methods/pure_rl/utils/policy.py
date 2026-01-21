@@ -11,6 +11,9 @@ class Policy(nn.Module):
                  model_name : str = "policy"
                  ):
         super().__init__()
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
         self.env = env
 
         # hyperparameters
@@ -21,6 +24,7 @@ class Policy(nn.Module):
         self.model_path = f"./{model_name}.pkl"
 
     def save(self):
+        self.to("cpu")
         torch.save(self.state_dict(), self.model_path)
 
     def load(self):

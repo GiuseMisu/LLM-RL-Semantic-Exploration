@@ -98,7 +98,7 @@ def main():
     # eval_env = gym.make(env_id, render_mode="rgb_array")
 
 
-    env_id = "MiniGrid-Empty-8x8-v0"
+    env_id = "MiniGrid-DoorKey-8x8-v0"
     #env_id = "MiniGrid-Empty-16x16-v0" #"MiniGrid-Empty-8x8-v0" #MiniGrid-Empty-5x5-v0 IS TOO EASY
 
 
@@ -116,12 +116,12 @@ def main():
     # Define the Policy
     policy = RecurrentPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 100, 
+                          epochs = 50, 
                           gamma = 0.99, 
                           epsilon = 0.2,
                           encode_dim=128,  # CNN output
                           hidden_dim=64,    # LSTM hidden size
-                          recurrence = "gru",
+                          recurrence = "lstm",
                           model_name="RecurrentPPO"
                           )
 
