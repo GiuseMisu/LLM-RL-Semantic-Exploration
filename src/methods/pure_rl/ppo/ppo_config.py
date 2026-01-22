@@ -180,265 +180,371 @@ cite:
   url={https://openreview.net/forum?id=jHc8dCx6DDr}
 }
 """
+   
+#==============================
+# NEW RecurrentPPO
+#=============================
+
 class RecurrentPPO(PPO):
     def __init__(
             self, 
-            env : gym.Env, 
-            gamma : float = 0.99, 
-            epsilon : float = 0.2,  
-            epochs : int = 100,
-
-            output_dim : int | None = None, # => si puo togliere come sopra
-            encode_dim : int = 128, # =>  CNN output size
-            hidden_dim : int = 64, 
-             
-            recurrence : str = "lstm",
-            model_name : str = "RecurrentPPO" 
+            env: gym.Env, 
+            gamma: float = 0.99, 
+            epsilon: float = 0.2,  
+            epochs: int = 100,
+            output_dim: int | None = None, # => si puo togliere come sopra
+            encode_dim: int = 128,  # =>  CNN output size
+            hidden_dim: int = 128,  # Match encode_dim for no bottleneck
+            sequence_length: int = 16,  # TBPTT sequence length
+            recurrence: str = "lstm",
+            model_name: str = "RecurrentPPO"  #with ppo recurrent save also the type of recurrence
             ):
         
+        # Call PPO init but we'll override some components
         super().__init__(
-                        env=env, 
-                        gamma=gamma, 
-                        epsilon=epsilon, 
-                        output_dim=output_dim,
-                        encode_dim=encode_dim, 
-                        epochs=epochs,
-                        model_name=model_name+"_"+recurrence #with ppo recurrent save also the type of recurrence
-                        )
+            env=env, 
+            gamma=gamma, 
+            epsilon=epsilon, 
+            output_dim=output_dim,
+            encode_dim=encode_dim, 
+            epochs=epochs,
+            model_name=model_name + "_" + recurrence
+        )
 
-        # detect action space if missing
-        if output_dim is None:
+        if output_dim is None: # detect action space if missing
             output_dim = int(env.action_space.n)
         
         self.hidden_dim = hidden_dim
         self.recurrence = recurrence
-        self.cell = None
-
+        self.sequence_length = sequence_length
+        
+        # Lower learning rate for recurrent networks
+        self.lr = 3e-4
+        
+        # Recurrent layer
         if self.recurrence == "lstm":
-            self.recurrent = nn.LSTM(encode_dim, hidden_size = self.hidden_dim, batch_first = True, device=self.device)
+            self.recurrent = nn.LSTM(encode_dim, hidden_dim, batch_first=True, device=self.device)
         elif self.recurrence == "gru":
-            self.recurrent = nn.GRU(encode_dim, hidden_size = self.hidden_dim, batch_first = True, device=self.device)
-        
-        # Re-initialize actor/critic to use hidden_dim (64D) instead of encode_dim
-        self.actor = BaseNet(input_dim=self.hidden_dim, output_dim=output_dim, device=self.device)
-        self.critic = BaseNet(input_dim=self.hidden_dim, output_dim=1, device=self.device)
-        
-        # Re-create optimizer to include all new parameters
-        self.optimizer = Adam(self.parameters(), lr=self.lr)
+            self.recurrent = nn.GRU(encode_dim, hidden_dim, batch_first=True, device=self.device)
 
-    def forward(self, state : torch.Tensor,
-                 cell : torch.Tensor | tuple[torch.Tensor, torch.Tensor | None], seq_len : int = 1) -> tuple:
+        #Orthogonal Initialization for LSTM
+        for name, param in self.recurrent.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+
+        self.layer_norm = nn.LayerNorm(hidden_dim, device=self.device)
+        
+        # Actor/Critic use hidden_dim
+        self.actor = BaseNet(input_dim=hidden_dim, output_dim=output_dim, device=self.device)
+        self.critic = BaseNet(input_dim=hidden_dim, output_dim=1, device=self.device)
+        
+        # Recreate optimizer with all parameters and new lr
+        self.optimizer = Adam(self.parameters(), lr=self.lr)
+        
+        print(f"[{self.name}] hidden_dim={hidden_dim}, seq_len={sequence_length}, lr={self.lr}")
+
+    def init_hidden(self, batch_size: int = 1):
+        """Initialize hidden states to zeros"""
+        h = torch.zeros(1, batch_size, self.hidden_dim, device=self.device)
+        c = None
+        if self.recurrence == "lstm":
+            c = torch.zeros(1, batch_size, self.hidden_dim, device=self.device)
+        return h, c
+
+    def forward(self, state: torch.Tensor, hidden=None, seq_len: int = 1):
         """
-        Forward pass also return the recurrent cell
+        Forward pass with recurrent processing.
+        
+        Args:
+            state: Input state tensor
+            hidden: Tuple (h, c) for LSTM or h for GRU
+            seq_len: Sequence length for reshaping batched sequences
         """
         state = state.to(self.device)
-        x = self.encoder(state) # MiniGridCNN per input 7x7x3  
         
-        if type(cell) == tuple and cell[1] == None:
-            cell = cell[0]
-
+        # CNN encoding
+        x = self.encoder(state)  # (batch, encode_dim)
+        
+        # Handle hidden state format
+        if hidden is None:
+            batch_size = x.shape[0] // seq_len
+            hidden = self.init_hidden(batch_size)
+        
+        if isinstance(hidden, tuple) and hidden[1] is None:
+            hidden = hidden[0]
+        
         if seq_len == 1:
-            # single step
-            x, cell = self.recurrent(x.unsqueeze(1), cell)
-            x = x.squeeze(1)
-        else:
-            # batch of sequences, to reshape in (sequences, seq_len, features)
-            x = x.reshape((x.shape[0]//seq_len), seq_len, x.shape[1])
-            x, cell = self.recurrent(x, cell)
-            x = x.reshape(x.shape[0]*x.shape[1], x.shape[2])
-
-        if type(cell) == torch.Tensor:
-            cell = (cell, None)
-
-        return self.actor(x), self.critic(x), cell
+            # Single step: x is (batch, features)
+            x = x.unsqueeze(1)  # (batch, 1, features)
+            x, new_hidden = self.recurrent(x, hidden)
+            x = self.layer_norm(x) # to stabilize training
+            x = x.squeeze(1)  # (batch, features)
+        else: # 
+            # Batch of sequences: reshape for recurrent processing
+            batch_size = x.shape[0] // seq_len
+            x = x.view(batch_size, seq_len, -1)  # (batch, seq_len, features)
+            x, new_hidden = self.recurrent(x, hidden)
+            x = self.layer_norm(x) # to stabilize training
+            x = x.reshape(-1, self.hidden_dim)  # (batch*seq_len, hidden_dim)
+        
+        # Ensure hidden is always tuple format
+        if not isinstance(new_hidden, tuple):
+            new_hidden = (new_hidden, None)
+            
+        action_logits = self.actor(x)
+        value = self.critic(x)
+        
+        return action_logits, value, new_hidden
     
-    def get_act(self, state : torch.Tensor) -> tuple:
+    def get_act(self, state: torch.Tensor):
+        """Get action for inference (single step)"""
+        if not hasattr(self, '_hidden') or self._hidden is None:
+            self._hidden = self.init_hidden(1)
+        
+        action, value, self._hidden = self.forward(state, self._hidden, seq_len=1)
+        return action, value
+    
+    def reset_hidden(self):
+        """Reset hidden state (call at episode start during evaluation)"""
+        self._hidden = None
+
+    def prepare_sequences(self, states, actions, log_probs, advantages, returns, 
+                          eps_sizes, hidden_states, episode_ends):
         """
-        Returns only action and value computed via forward
+        1. Splits data into chunks of sequence_length
+        2. Respects episode boundaries - Never crosses from one episode to another
+        3. Pads short sequences - If a chunk is shorter than sequence_length, pad with zeros
+        4. Creates masks - Track which positions are real vs padded
+        Returns sequences, masks, and corresponding hidden states.
         """
-        if self.cell == None:
-            h,c = self.init_cells(1)
-            if c is not None:
-                self.cell = (h,c)
+        total_steps = states.shape[0]
+        seq_len = self.sequence_length
+        
+        # We'll create sequences that respect episode boundaries
+        sequences_states = []
+        sequences_actions = []
+        sequences_log_probs = []
+        sequences_advantages = []
+        sequences_returns = []
+        sequences_masks = [] #=> CRUCIAL TO UNDERSTAND WHICH PART IS PADDING AND WHICH IS REAL DATA
+        sequences_hidden = []
+                
+        # Track which hidden state corresponds to which position
+        hidden_idx = 0
+        
+        i = 0
+        while i < total_steps:
+            # Determine sequence end (either seq_len steps or episode boundary)
+            seq_end = min(i + seq_len, total_steps)
+            
+            # Check for episode boundaries within this sequence
+            for ep_end in episode_ends:
+                if i <= ep_end < seq_end:
+                    seq_end = ep_end + 1
+                    break
+            
+            actual_len = seq_end - i
+            
+            # Extract sequence
+            seq_states = states[i:seq_end]
+            seq_actions = actions[i:seq_end]
+            seq_log_probs = log_probs[i:seq_end]
+            seq_advantages = advantages[i:seq_end]
+            seq_returns = returns[i:seq_end]
+            
+            # Create mask (1 for valid, 0 for padding)
+            mask = torch.ones(seq_len, device=self.device)
+            
+            # Pad if necessary
+            if actual_len < seq_len:
+                pad_len = seq_len - actual_len
+                seq_states = torch.cat([seq_states, torch.zeros(pad_len, *states.shape[1:], device=self.device)])
+                seq_actions = torch.cat([seq_actions, torch.zeros(pad_len, dtype=actions.dtype, device=self.device)])
+                seq_log_probs = torch.cat([seq_log_probs, torch.zeros(pad_len, device=self.device)])
+                seq_advantages = torch.cat([seq_advantages, torch.zeros(pad_len, device=self.device)])
+                seq_returns = torch.cat([seq_returns, torch.zeros(pad_len, device=self.device)])
+                mask[actual_len:] = 0
+            
+            sequences_states.append(seq_states)
+            sequences_actions.append(seq_actions)
+            sequences_log_probs.append(seq_log_probs)
+            sequences_advantages.append(seq_advantages)
+            sequences_returns.append(seq_returns)
+            sequences_masks.append(mask)
+            
+            # Get corresponding hidden state-> were saved at chunk boundaries during rollout
+            if hidden_idx < len(hidden_states):
+                sequences_hidden.append(hidden_states[hidden_idx])
+                hidden_idx += 1
             else:
-                self.cell = h
-        a, v, cell = self.forward(state, self.cell)
-        self.cell = cell
+                # Fallback: use zero hidden state
+                h, c = self.init_hidden(1)
+                sequences_hidden.append((h, c) if c is not None else h)
+            
+            i = seq_end
+        
+        return (
+            torch.stack(sequences_states),      # (num_seqs, seq_len, 7, 7, 3)
+            torch.stack(sequences_actions),     # (num_seqs, seq_len)
+            torch.stack(sequences_log_probs),   # (num_seqs, seq_len)
+            torch.stack(sequences_advantages),  # (num_seqs, seq_len)
+            torch.stack(sequences_returns),     # (num_seqs, seq_len)
+            torch.stack(sequences_masks),       # (num_seqs, seq_len)
+            sequences_hidden                    # list of hidden states
+        )
 
-        return a, v
-    
-    def step(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor,
-              advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list) -> None:
-        """
-        Single training step for training
-        """        
-        dataset, max_rows, N = self.batch_episodes(states, actions, old_log_probs, advantages, returns, eps_sizes)
-
-        h,c = self.init_cells(N)
-        cell = (h, c)
-
+    def step(self, states, actions, old_log_probs, advantages, returns, 
+             eps_sizes, hidden_states, episode_ends):
+        """Training step with proper sequence handling"""
+        
+        # Prepare sequences with masking
+        (seq_states, seq_actions, seq_log_probs, seq_advantages, 
+         seq_returns, seq_masks, seq_hidden) = self.prepare_sequences(
+            states, actions, old_log_probs, advantages, returns,
+            eps_sizes, hidden_states, episode_ends
+        )
+        
+        num_sequences = seq_states.shape[0]
+        seq_len = self.sequence_length
+        
+        # Create indices for shuffling sequences (not timesteps within sequences!)
+        indices = np.arange(num_sequences)
+        
         for _ in range(self.steps):
-            j = 0
-            for batch in dataset:
-
-                j+=1
-                batch_states, batch_actions, old_probs, adv, ret = batch
-                batch_states, batch_actions, old_probs, adv, ret = (
-                    batch_states.transpose(0,1), 
-                    batch_actions.transpose(0,1), 
-                    old_probs.transpose(0,1), 
-                    adv.transpose(0,1), 
-                    ret.transpose(0,1)
+            # Shuffle sequence order each iteration
+            np.random.shuffle(indices)
+            
+            # Process in mini-batches of sequences
+            batch_size = min(self.batch_size // seq_len, num_sequences)  # Number of sequences per batch
+            batch_size = max(1, batch_size)
+            
+            for start in range(0, num_sequences, batch_size):
+                end = min(start + batch_size, num_sequences)
+                batch_indices = indices[start:end]
+                
+                # Get batch
+                batch_states = seq_states[batch_indices]      # (batch, seq_len, 7, 7, 3)
+                batch_actions = seq_actions[batch_indices]    # (batch, seq_len)
+                batch_old_probs = seq_log_probs[batch_indices]
+                batch_adv = seq_advantages[batch_indices]
+                batch_ret = seq_returns[batch_indices]
+                batch_mask = seq_masks[batch_indices]
+       
+                # Get hidden states for this batch
+                batch_hidden_list_h = []
+                batch_hidden_list_c = []
+                
+                for idx in batch_indices:
+                    h_state = seq_hidden[idx]
+                    if isinstance(h_state, tuple):
+                        batch_hidden_list_h.append(h_state[0])
+                        if h_state[1] is not None:
+                            batch_hidden_list_c.append(h_state[1])
+                    else:
+                        batch_hidden_list_h.append(h_state)
+                
+                batch_hidden_h = torch.cat(batch_hidden_list_h, dim=1)
+                
+                if self.recurrence == "lstm" and len(batch_hidden_list_c) > 0:
+                    batch_hidden_c = torch.cat(batch_hidden_list_c, dim=1)
+                    batch_hidden = (batch_hidden_h, batch_hidden_c)
+                else:
+                    batch_hidden = batch_hidden_h
+                
+                # Flatten for CNN: (batch * seq_len, 7, 7, 3)
+                flat_states = batch_states.view(-1, *batch_states.shape[2:])
+                
+                # Forward pass
+                action_pred, value_pred, _ = self.forward(
+                    flat_states, 
+                    hidden=batch_hidden,
+                    seq_len=seq_len
                 )
-
-                # for CNN Flatten batch and sequence dims
-                # From (num_seqs, seq_len, 7, 7, 3) -> (num_seqs*seq_len, 7, 7, 3)
-                batch_size_flat = batch_states.shape[0] * batch_states.shape[1]
-                spatial_dims = batch_states.shape[2:]  # (7, 7, 3)
-                batch_states = batch_states.reshape(batch_size_flat, *spatial_dims)
                 
-                action_pred, value_pred, cell = self.forward(
-                    batch_states, cell=cell, 
-                    seq_len=min(self.batch_size, max_rows)
-                    )
+                # Reshape outputs: (batch * seq_len, ...) -> (batch, seq_len, ...)
+                curr_batch = end - start
+                action_pred = action_pred.view(curr_batch, seq_len, -1)
+                value_pred = value_pred.view(curr_batch, seq_len)
                 
-                value_pred = value_pred.squeeze(-1).view(ret.shape)                
-                action_pred = action_pred.view(-1, min(self.batch_size, max_rows), action_pred.shape[1])
-
-                # Calculate new action probabilities and entropy.
+                # Flatten for loss computation
+                batch_actions_flat = batch_actions.view(-1)
+                # not used batch_mask_flat = batch_mask.view(-1)
+                
+                # Compute new log probs and entropy
                 action_prob = F.softmax(action_pred, dim=-1)
-                dist = distributions.Categorical(action_prob)
-                new_log_probs = dist.log_prob(batch_actions)
-                entropy = dist.entropy()
-
-                # Calculate policy loss (surrogate loss) and value loss.
-                surrogate_loss = self.get_surrogate_loss(old_probs, new_log_probs, adv)
-                policy_loss, value_loss = self.get_loss(surrogate_loss, entropy, ret, value_pred)
-
-                # Backpropagate and update weights.
+                dist = distributions.Categorical(action_prob.view(-1, action_prob.shape[-1]))
+                new_log_probs = dist.log_prob(batch_actions_flat).view(curr_batch, seq_len)
+                entropy = dist.entropy().view(curr_batch, seq_len)
+                
+                # Apply mask to losses
+                # Surrogate loss
+                ratio = (new_log_probs - batch_old_probs).exp()
+                surr1 = ratio * batch_adv
+                surr2 = torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * batch_adv
+                surrogate_loss = torch.min(surr1, surr2)
+                
+                # Masked policy loss
+                entropy_bonus = self.entropy_coeff * entropy
+                policy_loss = -((surrogate_loss + entropy_bonus) * batch_mask).sum() / batch_mask.sum()
+                
+                # Masked value loss
+                value_loss = ((batch_ret - value_pred) ** 2 * batch_mask).sum() / batch_mask.sum()
+                
+                # Backprop
                 self.optimizer.zero_grad()
-
-                #old code (policy_loss + value_loss).backward(retain_graph=True)
-
-                (policy_loss + value_loss).backward() # No retain_graph
+                (policy_loss + 0.5 * value_loss).backward()
+                
+                # Gradient clipping (important for RNNs)
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
+                
                 self.optimizer.step()
 
-                # Detach cell state to break gradient history
-                # prevents "modified by in-place operation" error that occured
-                # Each forward pass through LSTM updates the hidden state: h_t, c_t = LSTM(x_t, h_{t-1}, c_{t-1})
-                # If keep the same cell state across multiple backward passes
-                # But in PPO, each mini-batch should be independent
-                c_1 = cell[1]
-                if c_1 is not None:
-                    c_1 = c_1.detach()
-
-                cell = (cell[0].detach(), c_1)
-                
-    
-    def batch_episodes(self, states : torch.Tensor, actions : torch.Tensor, old_log_probs : torch.Tensor,
-                        advantages : torch.Tensor, returns : torch.Tensor, eps_sizes : list) -> tuple:
-        """
-        Preprocess the data into a format digestible by recurrent network
-        """
-        # Prepares data for recurrent network training:
-        #   -episodes are stacked on top of each other
-        #   -length is padded to be multiple of batch size
-        # TODO: (possibly) make more efficient
-        # Create DataLoader for mini-batches    
-        states_per_seq = list(states.split(eps_sizes, dim = 0))
-        actions_per_seq = list(actions.split(eps_sizes, dim = 0))
-        old_log_probs_per_seq = list(old_log_probs.split(eps_sizes, dim = 0))
-        advantages_per_seq = list(advantages.split(eps_sizes, dim = 0))
-        returns_per_seq = list(returns.split(eps_sizes, dim = 0))
-
-        # maximum number of rows among the tensors
-        max_rows = max(tensor.size(0) for tensor in states_per_seq)
-        max_rows = math.ceil(max_rows/self.batch_size) * self.batch_size
-  
-        for n, _ in enumerate(states_per_seq):
-            sz = states_per_seq[n].size(0)  # Current episode length    
-            # Pad states (4D): [episode_len, 7, 7, 3]
-            # Padding tuple is read from last dim to first: (dim3, dim2, dim1, dim0)
-            states_per_seq[n] = torch.nn.functional.pad(
-                states_per_seq[n], 
-                (0, 0, 0, 0, 0, 0, 0, max_rows - sz))  # Only pad dim0 (episode_len) at the end
-            
-            
-            # Pad 1D tensors: [episode_len]
-            actions_per_seq[n] = torch.nn.functional.pad(
-                actions_per_seq[n], 
-                (0, max_rows - sz))  # Pad dim0 at the end
-            
-            old_log_probs_per_seq[n] = torch.nn.functional.pad(
-                old_log_probs_per_seq[n], 
-                (0, max_rows - sz))
-            
-            advantages_per_seq[n] = torch.nn.functional.pad(
-                advantages_per_seq[n], 
-                (0, max_rows - sz))
-            
-            returns_per_seq[n] = torch.nn.functional.pad(
-                returns_per_seq[n], 
-                (0, max_rows - sz))
-            
-
-        # Stack padded tensors
-        states = torch.stack(states_per_seq, dim=0)
-        actions = torch.stack(actions_per_seq, dim=0)
-        old_log_probs = torch.stack(old_log_probs_per_seq, dim=0)
-        advantages = torch.stack(advantages_per_seq, dim=0)
-        returns = torch.stack(returns_per_seq, dim=0)
-
-        dataset = DataLoader(
-             TensorDataset(states.transpose(0,1), actions.transpose(0,1), old_log_probs.detach().transpose(0,1), advantages.transpose(0,1), returns.transpose(0,1)),
-             batch_size=self.batch_size, shuffle=False
-        )        
-
-        return dataset, max_rows, states.shape[0]
-
-
     def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
-        """
-        Training loop for PPO
-        """        
+        """Training loop for Recurrent PPO"""
         max_rew = -float("inf")
         consecutive_epochs_mean_reward = []
 
         for e in range(self.epochs):
+            # Use recurrent rollout
+            (episode_reward, states, actions, log_probs, advantages, returns, 
+             eps_sizes, hidden_states, episode_ends) = self.rollout.forward_pass_recurrent(
+                init_hidden_fn=self.init_hidden,
+                sequence_length=self.sequence_length
+            )
             
-            episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
-            self.cell = None
+            # Reset hidden for next rollout
+            self._hidden = None
 
             if episode_reward > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward:.5f} ==> New best reward, saving")
+                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f} ==> New best reward, saving")
                 max_rew = episode_reward
                 self.save() 
             else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward:.5f}")
+                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f}")
 
             consecutive_epochs_mean_reward.append(episode_reward)
             if len(consecutive_epochs_mean_reward) > window_size:
                 consecutive_epochs_mean_reward.pop(0)
             
-            if len(consecutive_epochs_mean_reward) == window_size: # check if enough data
+            if len(consecutive_epochs_mean_reward) == window_size:
                 avg_recent = np.mean(consecutive_epochs_mean_reward)
                 if avg_recent >= early_stopping_threshold:
-                    print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
-                    print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
-                    print(f"Threshold: {early_stopping_threshold}\n")
-                    ## Don't save again - best model already saved self.save()  
+                    print(f"\nEARLY STOPPING at epoch {e+1}")
+                    print(f"Avg reward over {window_size} epochs: {avg_recent:.5f}")
                     break
-            
-            self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device), eps_sizes)
 
-    def init_cells(self, num_sequences : int) -> tuple:
-        """
-        Initializes recurrent cells at 0
-        """
-        hxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0).to(self.device)
-        cxs = None
-        if self.recurrence == "lstm":
-            cxs = torch.zeros((num_sequences), self.hidden_dim, dtype=torch.float32).unsqueeze(0).to(self.device)
-
-        return hxs, cxs
-   
+            # Training step
+            self.step(
+                states.to(self.device), 
+                actions.to(self.device), 
+                log_probs.to(self.device), 
+                advantages.to(self.device), 
+                returns.to(self.device),
+                eps_sizes,
+                hidden_states,
+                episode_ends
+            )

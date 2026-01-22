@@ -49,6 +49,10 @@ def evaluate_policy(env, policy, n_episodes=10):
         done = trunc = False
         steps = 0
         
+        # Reset hidden state at start of each episode
+        if hasattr(policy, 'reset_hidden'):
+            policy.reset_hidden()
+        
         while not done and not trunc:
             action, _ = policy.get_act(torch.FloatTensor(state).unsqueeze(0))
             env_action = F.softmax(action, dim=-1).argmax().item()
@@ -99,36 +103,48 @@ def main():
 
 
     env_id = "MiniGrid-DoorKey-8x8-v0"
-    #env_id = "MiniGrid-Empty-16x16-v0" #"MiniGrid-Empty-8x8-v0" #MiniGrid-Empty-5x5-v0 IS TOO EASY
+    #env_id = "MiniGrid-Empty-16x16-v0" 
+    #env_id = "MiniGrid-Empty-8x8-v0" 
 
-
+    #==============seed ti garantisce sempre steso env config ============
+    # NON USARE SEED DURING TRAINGING MA SOLO IN VAL SE VUOI VEDERE UNO SPECIFICO SCENARIO
+    #======================================================================
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
-    seed = 0 
+    #seed = 0 
 
     # Create environment using your env_setup.py
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 
-                            max_steps=150,
-                            seed=seed)()
+                            max_steps=650 # 250 for 5x5, but 650 for 8x8  #,
+                            #seed=seed
+                            )()
     
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
     policy = RecurrentPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 50, 
+                          epochs = 250, 
                           gamma = 0.99, 
                           epsilon = 0.2,
                           encode_dim=128,  # CNN output
-                          hidden_dim=64,    # LSTM hidden size
+                          hidden_dim=128,    # LSTM hidden size
+                          sequence_length=32, #32 per 8x8 env,    # TBPTT length
                           recurrence = "lstm",
                           model_name="RecurrentPPO"
                           )
 
+    #policy.batch_size = 2048 # for 5x5
+    policy.batch_size = 4096  # for 8x8
+
+    # rollout buffer size to match or exceed the batch size
+    #policy.rollout.iterations = 4096  # for 5x5 # Collect 4k steps per epoch instead of 1024
+    policy.rollout.iterations = 16384  # for 8x8 # Collect 16k steps per epoch
+
     # Train the environment
     policy.trainer(
-        early_stopping_threshold = 0.95,  # average reward threshold for early stopping 
-        window_size = 15  # Number of epochs to average over
+        early_stopping_threshold = 0.93,  # average reward threshold for early stopping 
+        window_size = 10  # Number of epochs to average over
         )    
     
     # load a trained version of the environment
@@ -137,7 +153,7 @@ def main():
     print("\n\nEvaluating the trained policy")
     eval_env = make_minigrid_env(env_id=env_id, 
                                  render_mode="rgb_array", 
-                                 max_steps=150
+                                 max_steps=250
                                  )()
 
     # Evaluate the Environment

@@ -6,7 +6,7 @@ Base (bare-bones) Neural Network structure for Actor-Critic algorithms
 """
 class BaseNet(nn.Module):
 
-    def __init__(self, input_dim : int, output_dim : int = 1,  hidden_dim : int = 64, dropout : float = 0.2, device : torch.device = torch.device("cpu")):
+    def __init__(self, input_dim : int, output_dim : int = 1,  hidden_dim : int = 64, dropout : float = 0.1, device : torch.device = torch.device("cpu")):
         super().__init__()
         self.L1 = nn.Linear(input_dim, hidden_dim).to(device)
         self.L2 = nn.Linear(hidden_dim, hidden_dim).to(device)

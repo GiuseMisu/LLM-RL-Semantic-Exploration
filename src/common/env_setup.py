@@ -11,8 +11,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 
 #PURE RL APPROACH NEEDS ImgObsWrapper
 from minigrid.wrappers import ImgObsWrapper
-from minigrid import register_minigrid_envs
-register_minigrid_envs()
 
 # LLM SCALAR-REWARD WRAPPER 
 from src.methods.llm_guided.llm_reward_wrapper import LLMRewardWrapper

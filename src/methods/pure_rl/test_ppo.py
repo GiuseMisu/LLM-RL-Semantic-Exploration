@@ -99,32 +99,43 @@ def main():
     # # Create the evaluation env
     # eval_env = gym.make(env_id, render_mode="rgb_array")
 
-    env_id = "MiniGrid-DoorKey-8x8-v0"
-    #env_id = "MiniGrid-DoorKey-5x5-v0"
+    env_id = "MiniGrid-DoorKey-5x5-v0"
+    #env_id = "MiniGrid-DoorKey-8x8-v0"
+    #==============seed ti garantisce sempre steso env config ============
+    # NON USARE SEED DURING TRAINGING MA SOLO IN VAL SE VUOI VEDERE UNO SPECIFICO SCENARIO
+    #======================================================================
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
-    seed = 0 
+    #seed = 0 
 
     # Create environment using your env_setup.py
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 
-                            max_steps=150,
-                            seed=seed)()
+                            max_steps=650 #,
+                            #seed=seed
+                            )()
     
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
     policy = PPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 50, 
+                          epochs = 250, 
                           gamma = 0.99, 
                           epsilon = 0.2,
                           model_name="PPO"
                           )
 
+    #policy.batch_size = 2048 # for 5x5
+    policy.batch_size = 4096  # for 8x8
+
+    # rollout buffer size to match or exceed the batch size
+    #policy.rollout.iterations = 4096  # for 5x5 # Collect 4k steps per epoch instead of 1024
+    policy.rollout.iterations = 16384
+
     # Train the environment
     policy.trainer(
-        early_stopping_threshold = 0.95,  # average reward threshold for early stopping 
-        window_size = 15  # Number of epochs to average over
+        early_stopping_threshold = 0.90,  # average reward threshold for early stopping 
+        window_size = 10  # Number of epochs to average over
         )    
     
     # load a trained version of the environment
@@ -133,7 +144,7 @@ def main():
     print("\n\nEvaluating the trained policy")
     eval_env = make_minigrid_env(env_id=env_id, 
                                  render_mode="rgb_array", 
-                                 max_steps=150
+                                 max_steps=250
                                  )()
 
     # Evaluate the Environment
