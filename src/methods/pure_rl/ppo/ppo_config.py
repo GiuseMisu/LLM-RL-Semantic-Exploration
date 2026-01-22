@@ -186,6 +186,29 @@ cite:
 #=============================
 
 class RecurrentPPO(PPO):
+    '''
+    Standard PPO treats each observation independently (Markov assumption), 
+    but this fails when the agent needs memory to make good decisions, so we add recurrence.
+    This class extends PPO with recurrent layers (LSTM/GRU) to handle partial observability.
+    maintaining a hidden state that summarizes past observations help the agent make better decisions.
+    
+    Implementation creates Separate Sequences and Save Hidden States
+    es Episode 1: [s0, s1, s2, ..., s47]  Episode 2: [s48, s49, s50, ..., s100] (new episode, agent exploring)
+    If you naively fed [s0, s1, ..., s100] as one long sequence to the LSTM:
+    Problem 1: The LSTM would think s48 follows from s47, carrying over memory from episode 1 into episode 2, but they're completely unrelated
+    Problem 2: Backpropagating through 100+ steps causes vanishing gradients and GPU memory explosion.
+   
+    To solve this TBPTT -> splits episodes in smaller chunks of fixed length
+    Idea: Don't backpropagate through the entire episode. Instead, split into chunks and backpropagate only within each chunk!!!!
+    es episode length = 48, chunk size = 16 
+    => Sequences: chunck1=[s0-s15], chunck2=[s16-s31], chunck3=[s32-s47] => only backprop through 16 steps at a time for each chunk
+    
+    [WARNING] When you process Chunk 2 [s16-s31], the LSTM needs to "know" what happened in [s0-s15] => YOU MUST SAVE THE HIDDEN STATE FOR EACH CHUNK START
+    when TRAINING Chunk 2 [s16-s31] it Start with saved h_15 = the boundary hidden state after processing s15
+
+    [WARNING] Mask Padding => Last chunk may be shorter than chunk size (e.g. episode ends in the middle of a chunk), pad with zeros to maintain consistent input size
+    the paddings are not real usefull data so when computing loss we must ignore them => create a mask that indicates which parts are real data vs padding
+    '''
     def __init__(
             self, 
             env: gym.Env, 
@@ -266,8 +289,7 @@ class RecurrentPPO(PPO):
         """
         state = state.to(self.device)
         
-        # CNN encoding
-        x = self.encoder(state)  # (batch, encode_dim)
+        x = self.encoder(state)  # CNN encoding (batch, encode_dim)
         
         # Handle hidden state format
         if hidden is None:
@@ -283,7 +305,7 @@ class RecurrentPPO(PPO):
             x, new_hidden = self.recurrent(x, hidden)
             x = self.layer_norm(x) # to stabilize training
             x = x.squeeze(1)  # (batch, features)
-        else: # 
+        else: 
             # Batch of sequences: reshape for recurrent processing
             batch_size = x.shape[0] // seq_len
             x = x.view(batch_size, seq_len, -1)  # (batch, seq_len, features)
@@ -315,11 +337,22 @@ class RecurrentPPO(PPO):
     def prepare_sequences(self, states, actions, log_probs, advantages, returns, 
                           eps_sizes, hidden_states, episode_ends):
         """
+        Training RNN on long sequences is memory-intensive-> solution is TBPTT
+        Instead of backpropagating through entire episodes, the data is split into chunks
+        Each processed indip with its corresponding initial hidden state
+        To do so must guarantees that Sequences NEVER cross episode boundaries
+
         1. Splits data into chunks of sequence_length
         2. Respects episode boundaries - Never crosses from one episode to another
         3. Pads short sequences - If a chunk is shorter than sequence_length, pad with zeros
         4. Creates masks - Track which positions are real vs padded
-        Returns sequences, masks, and corresponding hidden states.
+        5. Hidden State Alignment: Each sequence stores the hidden state that was active at its start (captured during rollout)
+        Returns sequences, masks and corresponding hidden states.
+
+        es: seq_size = 16
+        Episode 1: [s0, s1, ..., s47]           |   Episode 2: [s48, s49, ..., s100]
+        Sequences: [s0-s15], [s16-s31],         |   [s32-s47+padding], [s48-s63], ...
+        Masks:     [1,1,...,1], [1,1,...,1],    |   [1,...,1,0,0,0], [1,1,...,1], ...
         """
         total_steps = states.shape[0]
         seq_len = self.sequence_length
@@ -334,9 +367,9 @@ class RecurrentPPO(PPO):
         sequences_hidden = []
                 
         # Track which hidden state corresponds to which position
-        hidden_idx = 0
-        
+        hidden_idx = 0        
         i = 0
+        # following is the while loop where we create sequences
         while i < total_steps:
             # Determine sequence end (either seq_len steps or episode boundary)
             seq_end = min(i + seq_len, total_steps)
@@ -401,7 +434,7 @@ class RecurrentPPO(PPO):
              eps_sizes, hidden_states, episode_ends):
         """Training step with proper sequence handling"""
         
-        # Prepare sequences with masking
+        # Prepare sequences that respect episode boundaries and the corresponding hidden states
         (seq_states, seq_actions, seq_log_probs, seq_advantages, 
          seq_returns, seq_masks, seq_hidden) = self.prepare_sequences(
             states, actions, old_log_probs, advantages, returns,
@@ -422,6 +455,9 @@ class RecurrentPPO(PPO):
             batch_size = min(self.batch_size // seq_len, num_sequences)  # Number of sequences per batch
             batch_size = max(1, batch_size)
             
+            #=========================
+            # for loop to group multiple sequences together, concatenating their hidden states
+            #=========================
             for start in range(0, num_sequences, batch_size):
                 end = min(start + batch_size, num_sequences)
                 batch_indices = indices[start:end]
@@ -472,7 +508,6 @@ class RecurrentPPO(PPO):
                 
                 # Flatten for loss computation
                 batch_actions_flat = batch_actions.view(-1)
-                # not used batch_mask_flat = batch_mask.view(-1)
                 
                 # Compute new log probs and entropy
                 action_prob = F.softmax(action_pred, dim=-1)
@@ -480,7 +515,11 @@ class RecurrentPPO(PPO):
                 new_log_probs = dist.log_prob(batch_actions_flat).view(curr_batch, seq_len)
                 entropy = dist.entropy().view(curr_batch, seq_len)
                 
-                # Apply mask to losses
+
+                #================ [IMP] Masked Loss Computation ====================
+                #Only valid (non-padded) timesteps contribute to the loss
+                # Apply mask to losses-> important for ignore padded parts (not real data)
+                #===================================================================
                 # Surrogate loss
                 ratio = (new_log_probs - batch_old_probs).exp()
                 surr1 = ratio * batch_adv
@@ -494,10 +533,13 @@ class RecurrentPPO(PPO):
                 # Masked value loss
                 value_loss = ((batch_ret - value_pred) ** 2 * batch_mask).sum() / batch_mask.sum()
                 
-                # Backprop
+                # Backprop 
                 self.optimizer.zero_grad()
+                # Actor (policy): Learns which actions to take / Critic (value): Learns to estimate expected returns
+                # Their losses have different magnitudes and scales: Policy loss (surrogate loss) is typically small, Value loss can be larger
+                # 0.5 Prevents value function from dominating / The original PPO paper use 0.5
                 (policy_loss + 0.5 * value_loss).backward()
-                
+
                 # Gradient clipping (important for RNNs)
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
                 
@@ -509,7 +551,8 @@ class RecurrentPPO(PPO):
         consecutive_epochs_mean_reward = []
 
         for e in range(self.epochs):
-            # Use recurrent rollout
+            # specialized rollout that captures hidden states it collects: 
+            # Standard RL data (states, actions, rewards) / Hidden states at chunk boundaries / Episode sizes and episode end indices
             (episode_reward, states, actions, log_probs, advantages, returns, 
              eps_sizes, hidden_states, episode_ends) = self.rollout.forward_pass_recurrent(
                 init_hidden_fn=self.init_hidden,

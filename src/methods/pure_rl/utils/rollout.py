@@ -150,8 +150,13 @@ class Rollout():
     def forward_pass_recurrent(self, init_hidden_fn, sequence_length: int = 16):
         """
         Forward pass for recurrent policies (Stores hidden states at the START of each sequence chunk)
-        original forward_pass() was for PPO where each state is independent
-                
+        original forward_pass() was for PPO where each state is independent, so no hidden states needed to be stored and passed around
+        Now:
+        action_pred, value_pred, hidden = self.agent.forward(state_tensor, hidden, ...)
+                          ^^^^^^                                   ^^^^^^
+                      Updated hidden                          Previous hidden passed in  
+        The hidden state flows from step to step, accumulating memory.
+
         Args:
             init_hidden_fn: Function (defined in ppo_config method of RecurrentPPO class) that initialize hidden states 
             sequence_length: How many steps processed together during training = Length of chunks for TBPTT (Truncated Backprop Through Time) 
@@ -187,7 +192,7 @@ class Rollout():
             state_tensor = torch.FloatTensor(state).unsqueeze(0)
             states.append(state_tensor)
             
-            # Save hidden state at the start of each sequence chunk => every TBPTT steps
+            # Save hidden state at the start of each sequence chunk => every TBPTT step
             if steps_since_chunk_start % sequence_length == 0:
                 if isinstance(hidden, tuple):
                     hidden_states.append((
@@ -232,7 +237,7 @@ class Rollout():
                 episode_reward = 0.
                 ep_len = 0
                 
-                # Reset hidden state for new episode, otherwise The LSTM "remembers" things from previous episodes that are irrelevant
+                # Reset hidden state for new episode, otherwise The LSTM remembers things from previous episodes that are irrelevant
                 h, c = init_hidden_fn(1)
                 hidden = (h, c) if c is not None else h
                 steps_since_chunk_start = 0  # Reset chunk counter for new episode
