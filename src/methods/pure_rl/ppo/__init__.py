@@ -1,3 +1,3 @@
 __all__ = ["ppo_config"]
 
-from .ppo_config import PPO, RecurrentPPO, RNDPPO
+from .ppo_config import PPO, RecurrentPPO
