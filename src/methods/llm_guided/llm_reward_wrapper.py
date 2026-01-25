@@ -102,8 +102,8 @@ class LLMRewardWrapper(gym.Wrapper):
             # Query LLM for reward
             llm_reward = self.llm_client.robust_get_reward(
                 text_obs, 
-                verbose=self.verbose,
-                generate_explanation=False # reasoning activation
+                verbose=True,#self.verbose,
+                generate_explanation=True # reasoning activation
             )
         
         #print to show when env returned reward != 0

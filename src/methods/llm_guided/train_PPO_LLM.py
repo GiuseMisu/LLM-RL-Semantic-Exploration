@@ -26,6 +26,7 @@ from src.methods.llm_guided.Empty_Textualizer import get_EMPTY_description
 # Choose LLM Client 
 from src.methods.llm_guided.phi3_5 import Phi35LLMClient
 # from src.methods.llm_guided.gemini import GeminiLLMClient
+from src.methods.llm_guided.deepseek_r1 import DeepSeekLLMClient
 
 
 
@@ -61,6 +62,8 @@ def train_ppo_with_llm(
         # Initialize LLM
         if llm_backend == 'phi':
             real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
+        elif llm_backend == 'deepseek':
+            real_client = DeepSeekLLMClient(debug=False, system_prompt=system_prompt)            
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
             real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
@@ -132,9 +135,9 @@ if __name__ == "__main__":
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-5x5-v0",
         use_llm=True,
-        llm_backend='phi',
+        llm_backend='deepseek',
         llm_weight=1.0, 
-        epochs=100,
+        epochs=50,
         max_steps=250,
         verbose=False, 
         voting_samples=3

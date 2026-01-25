@@ -74,7 +74,7 @@ class Rollout():
 
     def forward_pass(self):
         states, actions, log_probs, values, rewards, done = [], [], [], [], [], False
-        total_reward = episode_reward = avg_reward = 0.
+        total_reward = total_reward_aug = episode_reward = avg_reward = 0.
         ep_len = 0
         state, _ = self.env.reset()
 
@@ -105,6 +105,9 @@ class Rollout():
             avg_reward = total_reward/(len(indexes)+1)
             
             reward = self.agent.augment_reward(float(reward))
+            total_reward_aug += float(reward)
+            avg_reward_aug = total_reward_aug/(len(indexes)+1)
+
             done = terminated or truncated
            
             if done:
@@ -144,7 +147,7 @@ class Rollout():
         returns = self.calculate_returns(rewards, indexes)
         advantages = self.calculate_advantages(returns, values)
 
-        return avg_reward, states, actions, log_probs, advantages, returns, eps_sizes
+        return (avg_reward, avg_reward_aug), states, actions, log_probs, advantages, returns, eps_sizes
     
 
     def forward_pass_recurrent(self, init_hidden_fn, sequence_length: int = 16):

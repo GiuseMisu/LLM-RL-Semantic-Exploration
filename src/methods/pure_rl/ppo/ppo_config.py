@@ -146,12 +146,14 @@ class PPO(Policy):
         for e in range(self.epochs):
             
             episode_reward, states, actions, log_probs, advantages, returns, _ = self.rollout.forward_pass()
-            if episode_reward > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward:.5f} ==> New best reward, saving")
-                max_rew = episode_reward
+            if episode_reward[0] > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f} ==> New best reward, saving")
+                max_rew = episode_reward[0]
                 self.save() 
             else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward:.5f}")
+                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f}")
+                
+            print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
 
             consecutive_epochs_mean_reward.append(episode_reward)
             if len(consecutive_epochs_mean_reward) > window_size:
