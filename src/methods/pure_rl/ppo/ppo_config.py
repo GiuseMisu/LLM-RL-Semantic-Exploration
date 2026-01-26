@@ -153,7 +153,7 @@ class PPO(Policy):
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f}")
                 
-            print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
+            #print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
 
             consecutive_epochs_mean_reward.append(episode_reward)
             if len(consecutive_epochs_mean_reward) > window_size:

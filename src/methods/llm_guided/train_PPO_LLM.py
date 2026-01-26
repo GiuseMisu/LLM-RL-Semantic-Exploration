@@ -135,7 +135,7 @@ if __name__ == "__main__":
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-5x5-v0",
         use_llm=True,
-        llm_backend='deepseek',
+        llm_backend='phi',
         llm_weight=1.0, 
         epochs=50,
         max_steps=250,
