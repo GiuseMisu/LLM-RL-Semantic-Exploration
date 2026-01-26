@@ -66,7 +66,8 @@ def get_DOORKEY_description(env, include_distances=True):
     # Get text direction
     if agent_dir in DIRECTION_TO_TEXT:
         facing = DIRECTION_TO_TEXT[agent_dir]
-    else:
+    else:   
+        print(f"[Warning] Unknown agent_dir={agent_dir}")     
         facing = "Unknown"
         
     carrying = base_env.carrying

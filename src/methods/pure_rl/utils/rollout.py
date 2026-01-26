@@ -104,7 +104,10 @@ class Rollout():
             total_reward += float(reward)
             avg_reward = total_reward/(len(indexes)+1)
             
-            reward = self.agent.augment_reward(float(reward))
+            # Pass next_state (state after env.step) 
+            # for intrinsic reward computation (used by RND) so PPO and RecurrentRNNPPO does not use it
+            # because they did not have the override of augment_reward 
+            reward = self.agent.augment_reward(float(reward), next_state=state)
             total_reward_aug += float(reward)
             avg_reward_aug = total_reward_aug/(len(indexes)+1)
 
@@ -225,7 +228,11 @@ class Rollout():
             state, reward, terminated, truncated, _ = self.env.step(action.item())
             
             episode_reward += float(reward)
-            reward = self.agent.augment_reward(float(reward))
+            
+            # Pass next_state (state after env.step) 
+            # for intrinsic reward computation (used by RND) so PPO and RecurrentRNNPPO does not use it
+            # because they did not have the override of augment_reward 
+            reward = self.agent.augment_reward(float(reward), next_state=state)
             done = terminated or truncated
            
             if done:

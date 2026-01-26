@@ -34,7 +34,17 @@ class Policy(nn.Module):
         print(f"[LOAD] Loading model from {self.model_path}")
         self.load_state_dict(torch.load(self.model_path, weights_only=True))
 
-    def augment_reward(self, reward : float):
+    def augment_reward(self, reward: float, next_state=None):
+        """
+        Augment reward. 
+        - Base implementation returns reward unchanged.
+        - RNDPPO overrides to add intrinsic rewards.
+        
+        Args:
+            reward: Extrinsic reward from environment
+            next_state: IS OPTIONAL, only RND uses it 
+                        next_state = the state reached after taking the action
+        """
         return reward
 
     @abstractmethod

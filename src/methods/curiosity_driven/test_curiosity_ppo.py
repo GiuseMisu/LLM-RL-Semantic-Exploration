@@ -99,28 +99,35 @@ def main():
     # # Create the evaluation env
     # eval_env = gym.make(env_id, render_mode="rgb_array")
 
+    #env_id = "MiniGrid-DoorKey-8x8-v0"
     env_id = "MiniGrid-DoorKey-5x5-v0"
-    #env_id = "MiniGrid-DoorKey-5x5-v0"
     # seed = 0 è quello facile con porta tutto sopra
     # seed = 1 é quello difficile con porta in mezzo /  
-    seed = 1
+    #seed = 1
 
     # Create environment using your env_setup.py
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 
-                            max_steps=150,
-                            seed=seed)()
+                            max_steps=650
+                            # seed=seed
+                            )()
     
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
     policy = RNDPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 20, 
+                          epochs = 100, 
                           gamma = 0.99, 
-                          gamma_intrinsic = 0.99,  
+                          gamma_intrinsic = 0.99, # late (high value) or early (lower value) exploration
                           epsilon = 0.2,
-                          model_name="RNDPPO"
+                          model_name="RNDPPO", 
+
+                          intrinsic_reward_coeff=0.01 # if high helps to explore more => more weight to intrinsic reward then env reward
+                                                      # if low  helps to exploit more => more weight to env reward
                           )
+
+    policy.batch_size = 4096
+    policy.rollout.iterations =  8192  
 
     # Train the environment
     policy.trainer(
@@ -134,7 +141,7 @@ def main():
     print("\n\nEvaluating the trained policy")
     eval_env = make_minigrid_env(env_id=env_id, 
                                  render_mode="rgb_array", 
-                                 max_steps=150
+                                 max_steps=650
                                  )()
 
     # Evaluate the Environment
