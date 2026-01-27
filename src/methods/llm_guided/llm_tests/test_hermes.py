@@ -4,13 +4,13 @@ import os
 
 # find the sibling file 'phi3_5.py'
 sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-from deepseek_r1 import DeepSeekLLMClient
+from hermes3 import HermesLLMClient
 
 if __name__ == "__main__":
     
     try:
         # Initialize the client
-        client = DeepSeekLLMClient(debug=True)
+        client = HermesLLMClient(debug=True)
         print(f"Model: {client.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")

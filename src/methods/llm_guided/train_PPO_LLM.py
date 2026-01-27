@@ -28,6 +28,8 @@ from src.methods.llm_guided.phi3_5 import Phi35LLMClient
 # from src.methods.llm_guided.gemini import GeminiLLMClient
 from src.methods.llm_guided.deepseek_r1 import DeepSeekLLMClient
 
+from src.methods.llm_guided.hermes3 import HermesLLMClient
+
 
 
 def train_ppo_with_llm(
@@ -39,7 +41,8 @@ def train_ppo_with_llm(
     max_steps=250,
     cache_name=None,
     verbose=False,
-    voting_samples=3
+    voting_samples=3,
+    load : bool  = False
 ):
     
     llm_client = None
@@ -63,7 +66,9 @@ def train_ppo_with_llm(
         if llm_backend == 'phi':
             real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
         elif llm_backend == 'deepseek':
-            real_client = DeepSeekLLMClient(debug=False, system_prompt=system_prompt)            
+            real_client = DeepSeekLLMClient(debug=False, system_prompt=system_prompt)   
+        elif llm_backend == 'hermes':
+            real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
             real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
@@ -101,6 +106,9 @@ def train_ppo_with_llm(
         model_name=f"PPO_{env_id.split('-')[1]}_llm_guided",
     )
     
+    if load:
+        policy.load()
+
     # === Train ===
     policy.trainer(
         early_stopping_threshold= 195,  # Stop if avg reward reaches 95%
@@ -133,12 +141,13 @@ if __name__ == "__main__":
     
     # # === EXPERIMENT 2: LLM-Guided (Additive Rewards) ===
     policy_llm, env_llm = train_ppo_with_llm(
-        env_id="MiniGrid-DoorKey-5x5-v0",
+        env_id="MiniGrid-DoorKey-8x8-v0",
         use_llm=True,
-        llm_backend='deepseek',
+        llm_backend='hermes',
         llm_weight=1.0, 
         epochs=50,
         max_steps=250,
         verbose=False, 
-        voting_samples=3
+        voting_samples=3,
+        load=True
     )
