@@ -29,6 +29,7 @@ from src.methods.llm_guided.phi3_5 import Phi35LLMClient
 from src.methods.llm_guided.deepseek_r1 import DeepSeekLLMClient
 
 from src.methods.llm_guided.hermes3 import HermesLLMClient
+from src.methods.llm_guided.DeepSeek671b import DeepSeekCloud671b_Client
 
 
 
@@ -64,14 +65,16 @@ def train_ppo_with_llm(
         
         # Initialize LLM
         if llm_backend == 'phi':
-            real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
+            real_client = Phi35LLMClient(system_prompt=system_prompt)
         elif llm_backend == 'deepseek':
-            real_client = DeepSeekLLMClient(debug=False, system_prompt=system_prompt)   
+            real_client = DeepSeekLLMClient(system_prompt=system_prompt)  
+        elif llm_backend == 'deepseek671b':
+            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt)
         elif llm_backend == 'hermes':
             real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
-            real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
         
@@ -115,19 +118,16 @@ def train_ppo_with_llm(
         window_size=10  # Average over last 10 epochs
     )
 
+
     # IMPORTANT: Finalize the last episode (otherwise it's not saved)
     if use_llm and hasattr(env, 'finalize_episode'):
         env.finalize_episode()
 
     if use_llm and hasattr(env, 'print_statistics_summary'):
         env.print_statistics_summary()
+        # Print cache & guardrail stats using the new method
+        llm_client.print_stats_summary()
         
-        # Print cache stats
-        print(f"LLM Cache Statistics:")
-        print(f"  Hits:                   {llm_client.stats['hits']}")
-        print(f"  Misses:                 {llm_client.stats['misses']}")
-        print(f"  Guardrail Corrections:  {llm_client.stats['corrected_by_guardrail']}")
-        print(f"{'='*60}\n")
     return policy, env
 
 
@@ -143,11 +143,10 @@ if __name__ == "__main__":
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-8x8-v0",
         use_llm=True,
-        llm_backend='hermes',
+        llm_backend='deepseek671b', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=50,
+        epochs=1,
         max_steps=250,
-        verbose=False, 
-        voting_samples=3,
-        load=True
+        verbose=True, 
+        voting_samples=3
     )

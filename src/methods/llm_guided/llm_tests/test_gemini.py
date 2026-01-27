@@ -12,7 +12,7 @@ if __name__ == "__main__":
     try:
         # Initialize the client
         MODEL_NAME = "gemini-2.5-flash-lite-preview-09-2025"
-        client = GeminiLLMClient(debug=True, model_name=MODEL_NAME)
+        client = GeminiLLMClient(model_name=MODEL_NAME)
         print(f"Model: {client.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")

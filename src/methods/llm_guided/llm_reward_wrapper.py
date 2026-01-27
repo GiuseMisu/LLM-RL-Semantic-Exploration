@@ -33,7 +33,7 @@ class LLMRewardWrapper(gym.Wrapper):
         # CRITICAL: Define observation_space to match the image we return (7x7x3 for MiniGrid)
         # The base MiniGrid env has a Dict space {'image': Box(7,7,3), 'mission': ...}
         # but we extract and return only 'image'
-        #LLMRewardWrapper returns only the image array to the agent (it extracts obs['image'] in step() / reset())
+        # LLMRewardWrapper returns only the image array to the agent (it extracts obs['image'] in step() / reset())
         # so check it and sets the wrapper’s observation space to the inner Box(7,7,3)
         if hasattr(env.observation_space, 'spaces') and 'image' in env.observation_space.spaces:
             self.observation_space = env.observation_space.spaces['image']
@@ -100,10 +100,11 @@ class LLMRewardWrapper(gym.Wrapper):
             text_obs = self.textualizer_fn(self.env)
             
             # Query LLM for reward
-            llm_reward = self.llm_client.robust_get_reward(
+            # metodo definito dentro classe con cache (RobustCachedLLMClient) perché se giá salvata la prende da cache altrimenti fa query a LLM
+            llm_reward = self.llm_client.try_cached_get_reward( 
                 text_obs, 
-                verbose=True,#self.verbose,
-                generate_explanation=True # reasoning activation
+                verbose=self.verbose,#self.verbose,
+                generate_explanation=False # reasoning activation
             )
         
         #print to show when env returned reward != 0
@@ -142,6 +143,7 @@ class LLMRewardWrapper(gym.Wrapper):
         }
         self.episode_history.append(episode_stats)
         self.total_episodes += 1
+
     def finalize_episode(self):
         # at the end of training to capture the final episode
         if self.episode_step_count > 0:

@@ -18,7 +18,7 @@ if __name__ == "__main__":
     print("\n[SCENARIO A] Testing DoorKey Mode")
     try:
         # 1. Init Real Client with DoorKey Prompt
-        dk_real = Phi35LLMClient(debug=True, system_prompt=DOOR_KEY_SYSTEM_PROMPT)
+        dk_real = Phi35LLMClient(system_prompt=DOOR_KEY_SYSTEM_PROMPT)
         # 2. Wrap with Caching/Guardrails
         dk_wrapper = RobustCachedLLMClient(dk_real, cache_path="test_DOORKEY_real.json", voting_samples=3, mode="DOORKEY")
         
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
         # 3. Real Observation
         obs_dk = "{ 'Agent': { 'pos': (1, 1), 'facing': 'East', 'inventory': 'None' }, 'Key': 'loc=(2, 1), dist=1, dir=Front <REACHABLE>', 'Door': 'Not Found', 'Goal': 'Unknown' }"
-        reward = dk_wrapper.robust_get_reward(obs_dk, verbose=True)
+        reward = dk_wrapper.try_cached_get_reward(obs_dk, verbose=True)
         print(f"   -> Result: {reward}")
 
     except Exception as e:
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     print("\n[SCENARIO B] Testing Empty Mode")
     try:
         # 1. Init Real Client with EMPTY Prompt
-        empty_real = Phi35LLMClient(debug=True, system_prompt=EMPTY_SYSTEM_PROMPT)
+        empty_real = Phi35LLMClient(system_prompt=EMPTY_SYSTEM_PROMPT)
         
         # 2. Wrap with Caching/Guardrails
         empty_wrapper = RobustCachedLLMClient(empty_real, cache_path="test_EMPTY_real.json", voting_samples=3, mode="EMPTY")
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         # 3. Real Observation (Goal is visible but far)
         # This tests if the LLM understands the Empty textual format
         obs_empty = "{ 'Agent': { 'pos': (1, 1), 'facing': 'East' }, 'Goal': 'loc=(5, 1), dist=4, dir=Front' }"
-        reward_empty = empty_wrapper.robust_get_reward(obs_empty, verbose=True)
+        reward_empty = empty_wrapper.try_cached_get_reward(obs_empty, verbose=True)
         print(f"   -> Result: {reward_empty}")
 
     except Exception as e:

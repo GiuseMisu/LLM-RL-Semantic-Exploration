@@ -19,24 +19,34 @@ import numpy as np
 
 from src.methods.pure_rl.ppo.ppo_config import PPO
 from src.methods.pure_rl.utils.network import BaseNet, MiniGridCNN
-from src.methods.pure_rl.utils.rollout import Rollout
+from src.methods.curiosity_driven.rnd_rollout import RNDRollout
 
 """
 PPO but Random Network Distillation.
-A version of PPO better suited for sparse reward environments
+This implementation uses SEPARATE ADVANTAGE STREAMS (canonical RND):
+- Extrinsic returns computed with gamma (long-term environment rewards)
+- Intrinsic returns computed with gamma_intrinsic (novelty-based exploration bonus)
+- Combined advantage = A^E + A^I for policy optimization
+
+V^E Learns ONLY about task rewards
+V^I Learns ONLY about intrinsic  rewards (curiosisty) 
+IMP => intrinsic does rapidly change so need a separate value that does not dampen the extrinsic one
+
 cite: https://www.emergentmind.com/topics/random-network-distillation-rnd
 """
 class RNDPPO(PPO):
     def __init__(
             self, env : gym.Env, 
-            gamma : float = 0.99, 
             epsilon : float = 0.2,
+            gamma : float = 0.99,            # Discount for extrinsic rewards            
             gamma_intrinsic : float = 0.99,  # Separate discount for intrinsic rewards
             output_dim : int | None = None,  # Auto-detect from env
             encode_dim : int = 128,
             rnd_dim : int = 128,
             epochs : int = 100,
-            model_name : str = "RNDPPO"
+            model_name : str = "RNDPPO",
+
+            intrinsic_reward_coeff : float = 0.005  #Scale intrinsic rewards
             ):
 
         super().__init__(
@@ -87,12 +97,14 @@ class RNDPPO(PPO):
         self.steps = 10        
 
         # RND-specific hyperparameters
-        self.intrinsic_reward_coeff = 0.005 # Scale intrinsic rewards
+        self.intrinsic_reward_coeff = intrinsic_reward_coeff  # Scale intrinsic rewards (default 0.005)
         self.rnd_loss_coeff = 0.5   # Weight for RND predictor loss
-        self.gamma_intrinsic = gamma_intrinsic # separate discount for intrinsic rewards
         
-        # statistics for intrinsic reward normalization
-        # different states would have wildly different magnitudes:
+        # Separate discount factor for intrinsic rewards
+        self.gamma_intrinsic = gamma_intrinsic
+        
+        # Running statistics for intrinsic reward normalization (Welford's algorithm)
+        # Different states have wildly different intrinsic magnitudes - normalization stabilizes training
         self.intrinsic_reward_mean = 0.0
         self.intrinsic_reward_std = 1.0
         self.intrinsic_reward_count = 0
@@ -100,10 +112,8 @@ class RNDPPO(PPO):
 
         self.optimizer = Adam([p for n, p in self.named_parameters() if "rnd_target" not in n], lr=self.lr)
 
-        self.rollout = Rollout(self.env, self)
-
-        #CHECK
-        #print(f"[RNDPPO] intrinsic_reward_coeff={self.intrinsic_reward_coeff}, rnd_loss_coeff={self.rnd_loss_coeff}")
+        # Use RND-specific rollout with dual advantage streams
+        self.rollout = RNDRollout(self.env, self)
 
     def compute_intrinsic_reward(self, state: torch.Tensor) -> tuple:
         """
@@ -116,46 +126,100 @@ class RNDPPO(PPO):
         intrinsic_rewards = ((predictor_features - target_features) ** 2).mean(dim=1) # MSE per sample
         
         return intrinsic_rewards, predictor_features, target_features
+    
+    def compute_intrinsic_reward_normalized(self, next_state) -> float:
+        """
+        Compute normalized intrinsic reward for a single state
+        Used by RNDRollout for separate advantage stream computation
+        Returns-> Normalized and scaled intrinsic reward
+        """
+        next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            intrinsic_rewards, _, _ = self.compute_intrinsic_reward(next_state_tensor)
+            raw_intrinsic = intrinsic_rewards.mean().item()
+        
+        # Update running statistics for normalization
+        self._update_intrinsic_stats(raw_intrinsic)
+        
+        # Normalize to prevent early explosion
+        effective_std = max(self.intrinsic_reward_std, 0.1)
+        normalized_intrinsic = raw_intrinsic / effective_std
+        
+        # Clip to prevent extreme outliers
+        normalized_intrinsic = np.clip(normalized_intrinsic, 0.0, 10.0)
+        
+        # Apply coefficient
+        scaled_intrinsic = self.intrinsic_reward_coeff * normalized_intrinsic
+        
+        return scaled_intrinsic
             
     def forward(self, state: torch.Tensor) -> tuple:
         """
         Forward pass for action selection and value estimation.
-        Also computes and stores intrinsic reward for augment_reward().
+        Returns combined value (extrinsic + intrinsic) for backward compatibility.
+        
+        NOTE: Intrinsic reward is computed in augment_reward() on the NEXT state, not here. 
+        This follows canonical RND where novelty = how novel is the state you REACHED, not the state you LEFT.
         """
         state = state.to(self.device)
-        # Encode state for policy
-        encoded_state = self.encoder(state)  # (batch, encode_dim)
+        encoded_state = self.encoder(state)
 
-        # Compute action logits and values
         action_logits = self.actor(encoded_state)
-        extrinsic_value = self.critic(encoded_state) # REWARD FROM ENV
-        intrinsic_value = self.intrinsic_critic(encoded_state) # REWARD FROM NOVELTY
+        extrinsic_value = self.critic(encoded_state)
+        intrinsic_value = self.intrinsic_critic(encoded_state)
         
-        # Combined value (for advantage computation)
+        # Combined value for backward compatibility
         value = extrinsic_value + intrinsic_value
-        
-        # Compute intrinsic reward for this state (used by augment_reward)
-        with torch.no_grad():
-            intrinsic_rewards, _, _ = self.compute_intrinsic_reward(state)
-            # Store for augment_reward (single value for single state)
-            self._current_intrinsic_reward = intrinsic_rewards.mean().item()       
 
         return action_logits, value
-        
-    def augment_reward(self, reward: float) -> float:
+    
+    def forward_dual_value(self, state: torch.Tensor) -> tuple:
         """
-        Augment extrinsic reward (THE ENV REW) with normalized intrinsic reward (THE NOVELTY REW)
+        Forward pass returning SEPARATE extrinsic and intrinsic values.
+        Used by RNDRollout for dual advantage stream computation.
+        
+        Returns:
+            action_logits: Action logits for policy
+            extrinsic_value: Value prediction for extrinsic rewards
+            intrinsic_value: Value prediction for intrinsic rewards
         """
-        if self._current_intrinsic_reward is None:
-            raise RuntimeError("Forward pass required before augment_reward()")
+        state = state.to(self.device)
+        encoded_state = self.encoder(state)
+
+        action_logits = self.actor(encoded_state)
+        extrinsic_value = self.critic(encoded_state)
+        intrinsic_value = self.intrinsic_critic(encoded_state)
+
+        return action_logits, extrinsic_value, intrinsic_value
         
-        raw_intrinsic = self._current_intrinsic_reward
+    def augment_reward(self, reward: float, next_state=None) -> float:
+        """
+        Augment extrinsic reward with normalized intrinsic reward.
         
-        # Update running statistics
+        Canonical RND: intrinsic reward is computed on the NEXT state (s_{t+1}),
+        rewarding the agent for reaching novel states, not for leaving them.
+        
+        Args:
+            reward: Extrinsic reward from environment
+            next_state: The state reached after taking the action (numpy array)
+        """
+        if next_state is None:
+            # Fallback: no intrinsic reward if next_state not provided
+            return reward
+        
+        # Convert next_state to tensor and compute intrinsic reward
+        next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            intrinsic_rewards, _, _ = self.compute_intrinsic_reward(next_state_tensor)
+            raw_intrinsic = intrinsic_rewards.mean().item()
+        
+        # Update running statistics for normalization
         self._update_intrinsic_stats(raw_intrinsic)
         
         # Normalize to prevent early explosion
-        # 0.1 to prevent division by tiny numbers
+        # 0.1 minimum to prevent division by tiny numbers
         effective_std = max(self.intrinsic_reward_std, 0.1)
         normalized_intrinsic = raw_intrinsic / effective_std
         
@@ -165,8 +229,7 @@ class RNDPPO(PPO):
         # Apply coefficient
         scaled_intrinsic = self.intrinsic_reward_coeff * normalized_intrinsic
         
-        augmented_reward = reward + scaled_intrinsic        
-        self._current_intrinsic_reward = None
+        augmented_reward = reward + scaled_intrinsic
 
         return augmented_reward
 
@@ -202,24 +265,33 @@ class RNDPPO(PPO):
 
         return rnd_loss
     
-    def step(self, states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, 
-             advantages: torch.Tensor, returns: torch.Tensor) -> None:
+    def step_dual_stream(self, states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, 
+                          advantages: torch.Tensor, extrinsic_returns: torch.Tensor, 
+                          intrinsic_returns: torch.Tensor) -> None:
         """
-        PPO update step with RND predictor training
+        PPO update step with SEPARATE value losses for extrinsic and intrinsic critics.
+        
+        This is the canonical RND approach:
+        - Policy loss uses combined advantages (A^E + A^I)
+        - Extrinsic critic is trained on extrinsic returns (gamma)
+        - Intrinsic critic is trained on intrinsic returns (gamma_intrinsic)
+        - RND predictor is trained to reduce novelty for visited states
         """
         # Create DataLoader for mini-batches
         dataset = DataLoader(
-            TensorDataset(states, actions, old_log_probs.detach(), advantages, returns),
+            TensorDataset(states, actions, old_log_probs.detach(), advantages, 
+                          extrinsic_returns, intrinsic_returns),
             batch_size=self.batch_size, shuffle=True
         )
 
         for _ in range(self.steps):
             for batch in dataset:
-                batch_states, batch_actions, old_probs, adv, ret = batch
+                batch_states, batch_actions, old_probs, adv, ext_ret, int_ret = batch
                 
-                # Forward pass
-                action_pred, value_pred = self.forward(batch_states)
-                value_pred = value_pred.squeeze(-1)
+                # Forward pass with separate values
+                action_pred, ext_value, int_value = self.forward_dual_value(batch_states)
+                ext_value = ext_value.squeeze(-1)
+                int_value = int_value.squeeze(-1)
 
                 # Calculate new action probabilities and entropy
                 action_prob = F.softmax(action_pred, dim=-1)
@@ -227,9 +299,15 @@ class RNDPPO(PPO):
                 new_log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy()
 
-                # PPO losses
+                # Policy loss (uses combined advantages)
                 surrogate_loss = self.get_surrogate_loss(old_probs, new_log_probs, adv)
-                policy_loss, value_loss = self.get_loss(surrogate_loss, entropy, ret, value_pred)
+                entropy_bonus = self.entropy_coeff * entropy
+                policy_loss = -(surrogate_loss + entropy_bonus).mean()
+                
+                # SEPARATE value losses for each critic
+                extrinsic_value_loss = F.smooth_l1_loss(ext_ret, ext_value).mean()
+                intrinsic_value_loss = F.smooth_l1_loss(int_ret, int_value).mean()
+                value_loss = extrinsic_value_loss + intrinsic_value_loss
 
                 # RND predictor loss (trains predictor to match target)
                 rnd_loss = self.compute_rnd_loss(batch_states)
@@ -241,3 +319,54 @@ class RNDPPO(PPO):
                 self.optimizer.zero_grad()
                 total_loss.backward()
                 self.optimizer.step()
+
+    def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
+        """
+        Training loop for RND-PPO with SEPARATE advantage streams.
+        
+        Uses dual stream rollout to compute:
+        - Extrinsic returns with gamma
+        - Intrinsic returns with gamma_intrinsic
+        - Combined advantages for policy optimization
+        """
+        max_rew = -float("inf")
+        consecutive_epochs_mean_reward = []
+
+        for e in range(self.epochs):
+            # Use dual stream forward pass
+            # Returns: (avg_extrinsic, avg_intrinsic, avg_total)
+            (avg_ext, avg_int, avg_total), states, actions, log_probs, advantages, \
+                extrinsic_returns, intrinsic_returns, _ = self.rollout.forward_pass_dual_stream()
+            
+            #three reward components:
+            # - Env Reward: The actual reward from the environment (what matters for task success)
+            # - Curiosity Reward: The intrinsic reward from RND (exploration bonus)
+            # - Total Reward: Env + Curiosity (what the agent optimizes)
+            if avg_ext > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f} ==> New best ENV REWARD, saving")
+                max_rew = avg_ext
+                self.save() 
+            else:
+                print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f}")
+
+            consecutive_epochs_mean_reward.append(avg_ext)
+            if len(consecutive_epochs_mean_reward) > window_size:
+                consecutive_epochs_mean_reward.pop(0)
+            
+            if len(consecutive_epochs_mean_reward) == window_size:
+                avg_recent = np.mean(consecutive_epochs_mean_reward)
+                if avg_recent >= early_stopping_threshold:
+                    print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
+                    print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
+                    print(f"Threshold: {early_stopping_threshold}\n")
+                    break
+
+            # Use dual stream step with separate returns
+            self.step_dual_stream(
+                states.to(self.device), 
+                actions.to(self.device), 
+                log_probs.to(self.device), 
+                advantages.to(self.device), 
+                extrinsic_returns.to(self.device),
+                intrinsic_returns.to(self.device)
+            )

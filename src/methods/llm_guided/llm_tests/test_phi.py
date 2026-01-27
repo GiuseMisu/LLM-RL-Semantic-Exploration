@@ -10,7 +10,7 @@ if __name__ == "__main__":
     
     try:
         # Initialize the client
-        client = Phi35LLMClient(debug=True, model_name="phi3.5")
+        client = Phi35LLMClient(model_name="phi3.5")
         print(f"Model: {client.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")

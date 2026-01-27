@@ -60,10 +60,10 @@ def train_ppo_with_llm(
         
         # Initialize LLM
         if llm_backend == 'phi':
-            real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
+            real_client = Phi35LLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
-            real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
         
@@ -112,12 +112,9 @@ def train_ppo_with_llm(
     if use_llm and hasattr(env, 'print_statistics_summary'):
         env.print_statistics_summary()
         
-        # Print cache stats
-        print(f"LLM Cache Statistics:")
-        print(f"  Hits:                   {llm_client.stats['hits']}")
-        print(f"  Misses:                 {llm_client.stats['misses']}")
-        print(f"  Guardrail Corrections:  {llm_client.stats['corrected_by_guardrail']}")
-        print(f"{'='*60}\n")
+        # Print cache & guardrail stats using the new method
+        llm_client.print_stats_summary()
+        
     return policy, env
 
 
