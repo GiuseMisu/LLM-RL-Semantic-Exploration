@@ -37,7 +37,7 @@ def get_relative_direction(agent_pos, agent_dir, target_pos):
     dy = target_pos[1] - agent_pos[1]
     
     # 2. Get Agent's forward vector (MiniGrid: 0=East, 1=South, 2=West, 3=North)
-    # Be careful with Y! In MiniGrid, South is +Y.
+    # In MiniGrid, South is +Y.
     forward_map = {
         0: (1, 0),  # East
         1: (0, 1),  # South
@@ -54,10 +54,10 @@ def get_relative_direction(agent_pos, agent_dir, target_pos):
     
     if dot > 0 and abs(cross) <= abs(dot): return "Front"
     if dot < 0 and abs(cross) <= abs(dot): return "Behind"
-    if cross > 0: return "Right" # Check MiniGrid coordinate handedness!
+    if cross > 0: return "Right" 
     return "Left"
 
-# --- UPDATED COMPACT TEXTUALIZER ---
+# --- COMPACT TEXTUALIZER ---
 def get_DOORKEY_description(env, include_distances=True):
     base_env = env.unwrapped
     agent_pos = sanitize(base_env.agent_pos)
@@ -87,12 +87,12 @@ def get_DOORKEY_description(env, include_distances=True):
                 target_pos = (int(x), int(y))
                 dist = int(abs(x - agent_pos[0]) + abs(y - agent_pos[1]))
                 
-                # --- NEW: Compute Direction explicitly ---
+                # --- Compute Direction explicitly ---
                 # We give the LLM the answer directly: "dir=South"
                 # Pass the integer agent_dir found earlier in the function
                 relative_dir = get_relative_direction(agent_pos, agent_dir, target_pos)
                 
-                # --- NEW: Check Reachability ---
+                # --- Check Reachability ---
                 # "Reachable" means Distance is 1 AND Direction is Front
                 is_reachable = (dist == 1 and relative_dir == "Front")
                 reach_str = " <REACHABLE>" if is_reachable else ""

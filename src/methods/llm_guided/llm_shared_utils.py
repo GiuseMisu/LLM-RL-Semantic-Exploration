@@ -34,7 +34,7 @@ Output exactly A SINGLE JSON object, with four fields:
 - "check_inventory": The current inventory of the agent (e.g., 'Key' or 'None').
 - "check_facing": Where the agent is currently facing (e.g. North, East, South, West).
 - "reasoning": A brief explanation (1-2 sentences) of your reward decision.
-- "reward": A scalar float value between -0.1 and 1.0 representing
+- "reward": A scalar float value between -0.1 and 1.0 representing the reward for this state.
 
 Do not output multiple JSONs.
 Do not simulate future steps. 
@@ -93,7 +93,7 @@ You will receive a structured JSON description of the current environment state.
 OUTPUT FORMAT:
 Output exactly A SINGLE JSON object, with two fields:
 - "reasoning": A brief explanation (1-2 sentences) of your reward decision.
-- "reward": A scalar float value between -0.1 and 1.0 representing the reward.
+- "reward": A scalar float value between -0.1 and 1.0 representing the reward for this state.
 
 Do not output multiple JSONs.
 Do not simulate future steps.
@@ -184,8 +184,10 @@ class BaseLLMClient(ABC):
             data = json.loads(cleaned_text)
 
             # 5. Standardized Printing
-            if verbose:
-                # removed because below the cleaned version print(f"\n[Raw LLM Output]:\n{cleaned_text}")
+            if verbose:                
+                #[FOR DEBUG] raw and clean response
+                # print(f"\n[Raw LLM Output]:\n{raw_text}") 
+                # print(f"\n[Cleaned LLM Output]:\n{cleaned_text}")
                 print("-" * 40)
                 # the two envs have different keys
                 # iterate over keys to handle both DoorKey (check_inventory) and Empty (reasoning)
@@ -193,11 +195,17 @@ class BaseLLMClient(ABC):
                 for key in priority_keys:
                     if key in data:
                         # Print formatted: Key ...... Value
-                        print(f"{key.upper().ljust(15)}: {data[key]}")
+                        print(f"{key.upper().ljust(15)}: {data[key]}") 
                 print("-" * 40)
                 sys.stdout.flush()
             
-            return float(data.get('reward', 0.0))
+            if 'reward' not in data:
+                print(f"[ERROR] 'reward' field missing in LLM response.")
+                print(f"[Raw Text was]: {repr(raw_text)}")
+                print(f"[Attempted to Parse]: {repr(cleaned_text)}")
+                return 0.0
+            else:
+                return float(data.get('reward'))
 
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             print(f"[ERROR] JSON Parsing Failed: {e}")

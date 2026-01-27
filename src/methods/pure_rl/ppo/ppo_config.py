@@ -184,7 +184,7 @@ cite:
 """
    
 #==============================
-# NEW RecurrentPPO
+# RecurrentPPO
 #=============================
 
 class RecurrentPPO(PPO):

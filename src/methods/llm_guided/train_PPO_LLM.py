@@ -113,13 +113,9 @@ def train_ppo_with_llm(
 
     if use_llm and hasattr(env, 'print_statistics_summary'):
         env.print_statistics_summary()
+        # Print cache & guardrail stats using the new method
+        llm_client.print_stats_summary()
         
-        # Print cache stats
-        print(f"LLM Cache Statistics:")
-        print(f"  Hits:                   {llm_client.stats['hits']}")
-        print(f"  Misses:                 {llm_client.stats['misses']}")
-        print(f"  Guardrail Corrections:  {llm_client.stats['corrected_by_guardrail']}")
-        print(f"{'='*60}\n")
     return policy, env
 
 

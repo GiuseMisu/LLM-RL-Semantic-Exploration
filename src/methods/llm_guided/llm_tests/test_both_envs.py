@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
         # 3. Real Observation
         obs_dk = "{ 'Agent': { 'pos': (1, 1), 'facing': 'East', 'inventory': 'None' }, 'Key': 'loc=(2, 1), dist=1, dir=Front <REACHABLE>', 'Door': 'Not Found', 'Goal': 'Unknown' }"
-        reward = dk_wrapper.robust_get_reward(obs_dk, verbose=True)
+        reward = dk_wrapper.try_cached_get_reward(obs_dk, verbose=True)
         print(f"   -> Result: {reward}")
 
     except Exception as e:
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         # 3. Real Observation (Goal is visible but far)
         # This tests if the LLM understands the Empty textual format
         obs_empty = "{ 'Agent': { 'pos': (1, 1), 'facing': 'East' }, 'Goal': 'loc=(5, 1), dist=4, dir=Front' }"
-        reward_empty = empty_wrapper.robust_get_reward(obs_empty, verbose=True)
+        reward_empty = empty_wrapper.try_cached_get_reward(obs_empty, verbose=True)
         print(f"   -> Result: {reward_empty}")
 
     except Exception as e:
