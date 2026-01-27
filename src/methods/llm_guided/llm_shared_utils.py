@@ -137,9 +137,8 @@ class BaseLLMClient(ABC):
     Abstract Base Class for all LLM clients
     Ensures that different LLMs all look the same to the RL agent.
     """    
-    def __init__(self, system_prompt: str, debug=False):
+    def __init__(self, system_prompt: str):
         self.system_prompt = system_prompt
-        self.debug = debug
 
     @abstractmethod
     def _get_raw_response(self, prompt: str, generate_explanation: bool) -> str:
@@ -212,6 +211,13 @@ class BaseLLMClient(ABC):
             print(f"[Raw Text was]: {repr(raw_text)}")
             print(f"[Attempted to Parse]: {repr(cleaned_text)}")
             return 0.0
+        
+        except ConnectionError:
+            # This ensures the program crashes immediately if Ollama is down
+            print("\n[Phi3.5 Error] Could not connect to Ollama\n"
+                "Make sure Ollama is running ('ollama serve') and the model is pulled")
+            raise 
+
         except Exception as e:
             print(f"[ERROR] General Failure: {e}")
             return 0.0

@@ -27,7 +27,7 @@ class RobustCachedLLMClient(BaseLLMClient):
         """
         
         # inherit the system prompt from the real client to pass it correctly if needed
-        super().__init__(system_prompt=real_llm_client.system_prompt, debug=False)
+        super().__init__(system_prompt=real_llm_client.system_prompt)
         
         self.client = real_llm_client
         self.cache_path = cache_path
@@ -94,6 +94,14 @@ class RobustCachedLLMClient(BaseLLMClient):
         2. Agent has nothing actionable but reward is very high (false positive)
         3. Agent has Key + Door is OPEN but reward is low (missing phase 2 success)
         """
+
+        if not (-0.1 <= proposed_reward <= 1):
+            return (
+                "\n\n[CRITICAL REFLECTION]\n"
+                f"CURRENT STATE: The proposed reward ({proposed_reward}) is outside valid range [-0.1, 1].\n"
+                "SUGGESTION: Please provide a reward within the valid range according to the SCORING GUIDELINES."
+            )
+        
         key_info = obs_data.get('Key', '')
         door_info = obs_data.get('Door', '')
         goal_info = obs_data.get('Goal', '')
@@ -107,57 +115,61 @@ class RobustCachedLLMClient(BaseLLMClient):
         goal_is_here = "dist=0" in goal_info or "dir=Here" in goal_info
         
         # =====================================================================
-        # CRITICAL CASE 1: Goal is HERE or REACHABLE but reward is too low
-        # This is catastrophic - the agent is winning but LLM doesn't recognize it
+        # CASE 1: FALSE NEGATIVES (GOOD STATE but low reward)
         # =====================================================================
-        if goal_is_here and proposed_reward < 0.7:
+        if goal_is_here and proposed_reward < 0.8:
             return (
                 "\n\n[CRITICAL REFLECTION]\n"
-                "The agent is standing ON the Goal (dist=0 / dir=Here).\n"
-                "This is the WIN condition.\n"
-                "Please evaluate and provide the correct reward that is aligned with the SCORING GUIDELINES"
+                "CURRENT STATE: The agent is standing ON the Goal (dist=0 / dir=Here).\n"
+                "SUGGESTION: This is the WIN condition.\n"
+                "Provide the correct reward that is aligned with the SCORING GUIDELINES"
             )
         
-        if goal_is_reachable and proposed_reward < 0.6:
+        if (goal_is_reachable or "dist=1" in goal_info) and proposed_reward < 0.6:
             return (
                 "\n\n[CRITICAL REFLECTION]\n"
-                "The Goal is marked <REACHABLE> (adjacent and facing it).\n"
-                "This is one step from winning.\n"
-                "Please evaluate and provide the correct reward that is aligned with the SCORING GUIDELINES"
+                "CURRENT STATE: The Goal is very close (dist=1) or marked <REACHABLE>.\n"
+                "SUGGESTION: Being adjacent to the goal should receive higher reward.\n"
+                "Provide the correct reward that is aligned with the SCORING GUIDELINES"
+            )
+        
+        if door_is_open and proposed_reward < 0.5:
+             return (
+                "\n\n[CRITICAL REFLECTION]\n"
+                "CURRENT STATE: The Door is OPEN\n"
+                "SUGGESTION: This is the last step of phase 2, the path to the Goal is now clear. The door is open, so it does not matter if you held the key or not.\n"
+                "Provide the correct reward that is aligned with the SCORING GUIDELINES"
             )
         
         # =====================================================================
-        # CRITICAL CASE 2: Very high reward but NOTHING is actionable
-        # Agent is wandering but LLM gave a success-level reward
+        # CASE 2: FALSE POSITIVES (High reward but state doesn't justify it)
+        # distinguish between Phase 1, Phase 2, and Phase 3 limits.
         # =====================================================================
         if proposed_reward >= 0.7:
-            something_actionable = ( 
-                                    goal_is_here or goal_is_reachable or 
-                                    door_is_open or door_is_reachable or 
-                                    key_is_reachable
-                                   )
-            if not something_actionable:
-                return (
+            
+            # Sub-case A: High reward, but Agent doesn't even have the Key yet
+            if not key_held and not key_is_reachable:
+                # If the door is already OPEN, not having the key is VALID for a high reward.
+                # We must return "" so the loop accepts the high reward.
+                if door_is_open:
+                    return ""
+                else:
+                    return (
                         "\n\n[CRITICAL REFLECTION]\n"
-                        "No object is <REACHABLE> and no success state is detected.\n"
-                        "- Goal: not reachable\n"
-                        "- Door: not reachable and not open\n"
-                        "- Key: not reachable (or already held)\n"
-                        "Please evaluate and provide the correct reward that is aligned with the SCORING GUIDELINES"
-                        )              
-        
-        # =====================================================================
-        # CRITICAL CASE 3: Agent has Key + Door is OPEN but reward is low
-        # This is a imp event (Phase 2 complete) but LLM undervalued it
-        # =====================================================================
-        if key_held and door_is_open and proposed_reward < 0.4:
-            return (
-                "\n\n[CRITICAL REFLECTION]\n"
-                "The agent has the Key AND the Door is OPEN.\n"
-                "This is Phase 2 SUCCESS - the path to the Goal is now clear.\n"
-                "Please evaluate and provide the correct reward that is aligned with the SCORING GUIDELINES"
-                ) 
-        
+                        "CURRENT STATE: The Agent does NOT possess the Key yet.\n"
+                        "SUGGESTION: High reward is impossible in Phase 1 (Finding the Key). So Low reward\n"
+                        "Provide the correct reward that is aligned with the SCORING GUIDELINES"
+                    )
+
+            # Sub-case B: High reward, Key is held, but Door is still Locked/Closed and far
+            if key_held and not door_is_open and not door_is_reachable:
+                return (
+                    f"\n\n[CRITICAL REFLECTION]\n"
+                    f"CURRENT STATE: The Door is currently Locked/Closed and NOT reachable.\n"
+                    "SUGGESTION: Merely holding the key while wandering implies a moderate reward (reward should be: not too high and not too low).\n"
+                    "Provide the correct reward that is aligned with the SCORING GUIDELINES"                    
+                )    
+  
         # No critical issues detected
         return ""
     
@@ -190,8 +202,9 @@ class RobustCachedLLMClient(BaseLLMClient):
             
             # If no issues detected, reward is acceptable
             if reflection_hint == "":
-                if attempt > 0 and verbose:
-                    print(f"[GUARDRAIL] Reflection successful after {attempt} attempt(s)")
+                #if attempt > 0 and verbose:
+                if attempt > 0: #always print for [debug]
+                    print(f"[GUARDRAIL] Reflection successful in {attempt} attempts => Proposed Reward: {proposed_reward} | Final Reward: {current_reward}")
                     self.stats["reflection_successes"] += 1
                 return current_reward
             
@@ -262,8 +275,7 @@ class RobustCachedLLMClient(BaseLLMClient):
         # 4. Calculate Median
         final_reward = statistics.median(rewards)
         if verbose:
-            print(f"   -> Raw Votes: {rewards}")
-            print(f"   -> Median: {final_reward}")
+            print(f"    Raw Votes: {sorted(rewards)} -> Median: {final_reward}")
 
         # 5. Apply Reflection-Based Guardrails
         if self.mode == "DOORKEY":
@@ -276,7 +288,7 @@ class RobustCachedLLMClient(BaseLLMClient):
             )
         
         if guarded_reward != final_reward and verbose:
-            print(f"   -> [GUARDRAIL] Final correction: {final_reward} => {guarded_reward}")
+            print(f"   -> [GUARDRAIL] Final correction: {final_reward} => {guarded_reward}\n")
 
         # 6. Save to Cache
         self.cache[cache_key] = guarded_reward
@@ -303,7 +315,7 @@ class RobustCachedLLMClient(BaseLLMClient):
 
 
 if __name__ == "__main__":
-        #=======================
+    #=======================
     # PHI 3.5 TESTS
     #=======================
     from src.methods.llm_guided.phi3_5 import Phi35LLMClient
@@ -311,7 +323,7 @@ if __name__ == "__main__":
 
     # 1. Initialize the Real Client
     try:        
-        real_client = Phi35LLMClient(debug=True, system_prompt=DOOR_KEY_SYSTEM_PROMPT)
+        real_client = Phi35LLMClient(system_prompt=DOOR_KEY_SYSTEM_PROMPT)
         print(f"Client Initialized Model: {real_client.model_name}")
     except Exception as e:
         print(e)

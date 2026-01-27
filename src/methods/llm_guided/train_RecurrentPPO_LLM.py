@@ -60,10 +60,10 @@ def train_ppo_with_llm(
         
         # Initialize LLM
         if llm_backend == 'phi':
-            real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
+            real_client = Phi35LLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
-            real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
         

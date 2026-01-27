@@ -11,9 +11,9 @@ from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, DOOR_KEY_SYST
 
 
 class GeminiLLMClient(BaseLLMClient):
-    def __init__(self, api_key=None, model_name="gemini-1.5-flash", debug=False, system_prompt=DOOR_KEY_SYSTEM_PROMPT):
+    def __init__(self, api_key=None, model_name="gemini-1.5-flash", system_prompt=DOOR_KEY_SYSTEM_PROMPT):
         
-        super().__init__(debug=debug, system_prompt=system_prompt)
+        super().__init__(system_prompt=system_prompt)
         
         # Authentication
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
@@ -62,8 +62,7 @@ class GeminiLLMClient(BaseLLMClient):
             return ""
 
         except Exception as e:
-            if self.debug:
-                print(f"Gemini API Error: {e}")
+            print(f"Gemini API Error: {e}")
             return ""
 
 
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     #Setup Test Client
     try:
         MODEL_NAME = "gemini-2.5-flash-lite-preview-09-2025"
-        client = GeminiLLMClient(debug=True, model_name=MODEL_NAME)
+        client = GeminiLLMClient(model_name=MODEL_NAME)
         print(f"--- TESTING MODEL: {client.model_name} ---")
     except Exception as e:
         print(e)

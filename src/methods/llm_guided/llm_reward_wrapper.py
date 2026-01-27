@@ -103,8 +103,8 @@ class LLMRewardWrapper(gym.Wrapper):
             # metodo definito dentro classe con cache (RobustCachedLLMClient) perché se giá salvata la prende da cache altrimenti fa query a LLM
             llm_reward = self.llm_client.try_cached_get_reward( 
                 text_obs, 
-                verbose=True,#self.verbose,
-                generate_explanation=True # reasoning activation
+                verbose=self.verbose,#self.verbose,
+                generate_explanation=False # reasoning activation
             )
         
         #print to show when env returned reward != 0

@@ -27,6 +27,7 @@ from src.methods.llm_guided.Empty_Textualizer import get_EMPTY_description
 from src.methods.llm_guided.phi3_5 import Phi35LLMClient
 # from src.methods.llm_guided.gemini import GeminiLLMClient
 from src.methods.llm_guided.deepseek_r1 import DeepSeekLLMClient
+from src.methods.llm_guided.DeepSeek671b import DeepSeekCloud671b_Client
 
 
 
@@ -61,12 +62,14 @@ def train_ppo_with_llm(
         
         # Initialize LLM
         if llm_backend == 'phi':
-            real_client = Phi35LLMClient(debug=False, system_prompt=system_prompt)
+            real_client = Phi35LLMClient(system_prompt=system_prompt)
         elif llm_backend == 'deepseek':
-            real_client = DeepSeekLLMClient(debug=False, system_prompt=system_prompt)            
+            real_client = DeepSeekLLMClient(system_prompt=system_prompt)  
+        elif llm_backend == 'deepseek671b':
+            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
-            real_client = GeminiLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
         
@@ -107,6 +110,7 @@ def train_ppo_with_llm(
         window_size=10  # Average over last 10 epochs
     )
 
+
     # IMPORTANT: Finalize the last episode (otherwise it's not saved)
     if use_llm and hasattr(env, 'finalize_episode'):
         env.finalize_episode()
@@ -131,10 +135,10 @@ if __name__ == "__main__":
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-5x5-v0",
         use_llm=True,
-        llm_backend='phi',
+        llm_backend='deepseek671b', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=50,
+        epochs=1,
         max_steps=250,
-        verbose=False, 
+        verbose=True, 
         voting_samples=3
     )

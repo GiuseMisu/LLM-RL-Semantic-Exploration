@@ -18,7 +18,7 @@ if __name__ == "__main__":
     print("\n[SCENARIO A] Testing DoorKey Mode")
     try:
         # 1. Init Real Client with DoorKey Prompt
-        dk_real = Phi35LLMClient(debug=True, system_prompt=DOOR_KEY_SYSTEM_PROMPT)
+        dk_real = Phi35LLMClient(system_prompt=DOOR_KEY_SYSTEM_PROMPT)
         # 2. Wrap with Caching/Guardrails
         dk_wrapper = RobustCachedLLMClient(dk_real, cache_path="test_DOORKEY_real.json", voting_samples=3, mode="DOORKEY")
         
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     print("\n[SCENARIO B] Testing Empty Mode")
     try:
         # 1. Init Real Client with EMPTY Prompt
-        empty_real = Phi35LLMClient(debug=True, system_prompt=EMPTY_SYSTEM_PROMPT)
+        empty_real = Phi35LLMClient(system_prompt=EMPTY_SYSTEM_PROMPT)
         
         # 2. Wrap with Caching/Guardrails
         empty_wrapper = RobustCachedLLMClient(empty_real, cache_path="test_EMPTY_real.json", voting_samples=3, mode="EMPTY")

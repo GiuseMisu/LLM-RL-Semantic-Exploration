@@ -10,7 +10,7 @@ if __name__ == "__main__":
     
     try:
         # Initialize the client
-        client = DeepSeekLLMClient(debug=True)
+        client = DeepSeekLLMClient()
         print(f"Model: {client.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")
