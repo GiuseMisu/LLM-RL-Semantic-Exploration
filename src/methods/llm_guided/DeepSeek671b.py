@@ -43,7 +43,7 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
 
                 if self.reasoning == True and response['message']['thinking']:
                     # [debug] print CoT
-                    print("\n" + "="*40)
+                    print("\n" + "-"*40)
                     print("CoT of DeepSeek-Cloud-671b:")
                     print(response['message']['thinking'])
                     print("="*40 + "\n")

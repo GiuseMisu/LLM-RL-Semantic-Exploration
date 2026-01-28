@@ -142,10 +142,15 @@ class PPO(Policy):
         """
         max_rew = -float("inf")
         consecutive_epochs_mean_reward = []
-
+        training_history = [] #Store all episode rewards
+    
         for e in range(self.epochs):
             
             episode_reward, states, actions, log_probs, advantages, returns, _ = self.rollout.forward_pass()
+            
+            # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
+            training_history.append(episode_reward[0])  # episode_reward is a list/array
+        
             if episode_reward[0] > max_rew:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f} ==> New best reward, saving")
                 max_rew = episode_reward[0]
@@ -155,21 +160,25 @@ class PPO(Policy):
                 
             #print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
 
-            consecutive_epochs_mean_reward.append(episode_reward)
-            if len(consecutive_epochs_mean_reward) > window_size:
-                consecutive_epochs_mean_reward.pop(0)
-            
-            if len(consecutive_epochs_mean_reward) == window_size: # check if enough data
-                avg_recent = np.mean(consecutive_epochs_mean_reward)
-                if avg_recent >= early_stopping_threshold:
-                    print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
-                    print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
-                    print(f"Threshold: {early_stopping_threshold}\n")
-                    ## Don't save again - best model already saved self.save()  
-                    break
+            #activate the early stopping mechanism if early_stopping_threshold is set
+            if early_stopping_threshold is not None:
+                consecutive_epochs_mean_reward.append(episode_reward)
+                if len(consecutive_epochs_mean_reward) > window_size:
+                    consecutive_epochs_mean_reward.pop(0)
+                
+                if len(consecutive_epochs_mean_reward) == window_size: # check if enough data
+                    avg_recent = np.mean(consecutive_epochs_mean_reward)
+                    if avg_recent >= early_stopping_threshold:
+                        print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
+                        print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
+                        print(f"Threshold: {early_stopping_threshold}\n")
+                        ## Don't save again - best model already saved self.save()  
+                        break
 
             self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device))
 
+        return training_history   # added for eureka approach
+    
 """
 PPO but recurrent
 cite: 
@@ -551,6 +560,8 @@ class RecurrentPPO(PPO):
         """Training loop for Recurrent PPO"""
         max_rew = -float("inf")
         consecutive_epochs_mean_reward = []
+        training_history = [] #Store all episode rewards
+    
 
         for e in range(self.epochs):
             # specialized rollout that captures hidden states it collects: 
@@ -564,6 +575,9 @@ class RecurrentPPO(PPO):
             # Reset hidden for next rollout
             self._hidden = None
 
+            # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
+            training_history.append(episode_reward)  # episode_reward is a list/array
+        
             if episode_reward > max_rew:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f} ==> New best reward, saving")
                 max_rew = episode_reward
@@ -571,16 +585,18 @@ class RecurrentPPO(PPO):
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f}")
 
-            consecutive_epochs_mean_reward.append(episode_reward)
-            if len(consecutive_epochs_mean_reward) > window_size:
-                consecutive_epochs_mean_reward.pop(0)
-            
-            if len(consecutive_epochs_mean_reward) == window_size:
-                avg_recent = np.mean(consecutive_epochs_mean_reward)
-                if avg_recent >= early_stopping_threshold:
-                    print(f"\nEARLY STOPPING at epoch {e+1}")
-                    print(f"Avg reward over {window_size} epochs: {avg_recent:.5f}")
-                    break
+            #activate the early stopping mechanism if early_stopping_threshold is set
+            if early_stopping_threshold is not None:
+                consecutive_epochs_mean_reward.append(episode_reward)
+                if len(consecutive_epochs_mean_reward) > window_size:
+                    consecutive_epochs_mean_reward.pop(0)
+                
+                if len(consecutive_epochs_mean_reward) == window_size:
+                    avg_recent = np.mean(consecutive_epochs_mean_reward)
+                    if avg_recent >= early_stopping_threshold:
+                        print(f"\nEARLY STOPPING at epoch {e+1}")
+                        print(f"Avg reward over {window_size} epochs: {avg_recent:.5f}")
+                        break
 
             # Training step
             self.step(
@@ -593,3 +609,5 @@ class RecurrentPPO(PPO):
                 hidden_states,
                 episode_ends
             )
+            
+        return training_history   # added for eureka approach

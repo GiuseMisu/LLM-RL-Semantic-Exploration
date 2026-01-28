@@ -349,17 +349,19 @@ class RNDPPO(PPO):
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f}")
 
-            consecutive_epochs_mean_reward.append(avg_ext)
-            if len(consecutive_epochs_mean_reward) > window_size:
-                consecutive_epochs_mean_reward.pop(0)
-            
-            if len(consecutive_epochs_mean_reward) == window_size:
-                avg_recent = np.mean(consecutive_epochs_mean_reward)
-                if avg_recent >= early_stopping_threshold:
-                    print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
-                    print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
-                    print(f"Threshold: {early_stopping_threshold}\n")
-                    break
+            #activate the early stopping mechanism if early_stopping_threshold is set
+            if early_stopping_threshold is not None:
+                consecutive_epochs_mean_reward.append(avg_ext)
+                if len(consecutive_epochs_mean_reward) > window_size:
+                    consecutive_epochs_mean_reward.pop(0)
+                
+                if len(consecutive_epochs_mean_reward) == window_size:
+                    avg_recent = np.mean(consecutive_epochs_mean_reward)
+                    if avg_recent >= early_stopping_threshold:
+                        print(f"\nEARLY STOPPING TRIGGERED at epoch {e+1}")
+                        print(f"Average reward over last {window_size} epochs: {avg_recent:.5f}")
+                        print(f"Threshold: {early_stopping_threshold}\n")
+                        break
 
             # Use dual stream step with separate returns
             self.step_dual_stream(
