@@ -8,10 +8,13 @@ from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, DOOR_KEY_SYST
 
 class DeepSeekCloud671b_Client(BaseLLMClient):
     
-    def __init__(self, model_name="deepseek-v3.1:671b-cloud", system_prompt=DOOR_KEY_SYSTEM_PROMPT):     
+    def __init__(self, model_name="deepseek-v3.1:671b-cloud", system_prompt=DOOR_KEY_SYSTEM_PROMPT, reasoning = True, temperature=0.3):     
         super().__init__(system_prompt=system_prompt)
         self.model_name = model_name
-        
+        self.temperature = temperature
+        self.reasoning = reasoning
+        print(f"\n\n[DeepSeek-Cloud-671b] \n- Reasoning = {self.reasoning} \n- Temperature = {self.temperature}")
+
         # Verify connection on init
         try:
             ollama.show(self.model_name)
@@ -21,7 +24,7 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
     def _get_raw_response(self, prompt: str, generate_explanation: bool) -> str:
         try:
             
-            llm_options = {'temperature': 0.3}
+            llm_options = {'temperature': self.temperature}
             
             messages = [
                 {'role': 'system', 'content': self.system_prompt}, 
@@ -31,11 +34,20 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
             response = ollama.chat(
                 model=self.model_name,
                 options=llm_options,
-                messages=messages
+                messages=messages, 
+                think=self.reasoning
             )
             
             if 'message' in response and 'content' in response['message']:
                 raw_text = response['message']['content']
+
+                if self.reasoning == True and response['message']['thinking']:
+                    # [debug] print CoT
+                    print("\n" + "="*40)
+                    print("CoT of DeepSeek-Cloud-671b:")
+                    print(response['message']['thinking'])
+                    print("="*40 + "\n")
+
                 # clean the specific DeepSeek artifacts here
                 cleaned_response = self.clean_json_text_DeepSeek(raw_text)
                 return cleaned_response
@@ -44,11 +56,14 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
 
         except Exception as e:
             raise ConnectionError(
-                f"[DeepSeek Cloud Error] {e}\n"
-                f"Ensure you ran 'ollama pull {self.model_name}' and have an internet connection."
+                f"[DeepSeek-Cloud-671b Error] Could not connect to Ollama\n"
+                f"Make sure Ollama is running"
             )
     
     @staticmethod
+    #==============================
+    #probably can be removed
+    #=============================
     def clean_json_text_DeepSeek(text: str) -> str:
         # 1. Remove <think>...</think> blocks if present
         clean_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)

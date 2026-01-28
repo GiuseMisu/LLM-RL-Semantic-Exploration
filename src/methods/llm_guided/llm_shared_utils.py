@@ -214,8 +214,7 @@ class BaseLLMClient(ABC):
         
         except ConnectionError:
             # This ensures the program crashes immediately if Ollama is down
-            print("\n[Phi3.5 Error] Could not connect to Ollama\n"
-                "Make sure Ollama is running ('ollama serve') and the model is pulled")
+            print("\n[Error] Could not connect to Ollama\n")
             raise 
 
         except Exception as e:
