@@ -15,22 +15,57 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 from src.common.env_setup import make_minigrid_env
 from src.methods.pure_rl.ppo.ppo_config import PPO  
-from src.methods.llm_guided.EurekaApproach.eureka_prompt_doorkey import EUREKA_INITIAL_PROMPT_DOORKEY, EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY
+from src.methods.llm_guided.EurekaApproach.eureka_prompt_doorkey import EUREKA_INITIAL_PROMPT_DOORKEY, EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY, MINIGRID_API_CONTEXT_DOORKEY
 
 class EurekaSearch:
     def __init__(self, env_id, 
-                 llm_model, reflection_iterations=5, 
-                 evaluation_epochs=30, evaluation_max_steps=250, 
+                 llm_model, 
+                 reflection_iterations=5, # numero di volte refine prompt and reward function
+                 
+                 training_epochs=30, train_max_steps=250,  # training params pre eval
+                 num_eval_episodes=10, # numero di episodi su cui valuti post training
                  pure_rl_baseline='PPO'            
                  ):
         self.env_id = env_id
-        self.llm_model = llm_model
-        self.reflection_iterations = reflection_iterations
+
+        #extract the env size to place them in the dynamic context prompt
+        if "5x5" in env_id:
+            self.env_width = 5
+            self.env_height= 5 
+        elif "8x8" in env_id:
+            self.env_width = 8
+            self.env_height= 8
+        else:
+            #find number in the env id string and extract it
+            size_match = re.search(r'(\d+)x(\d+)', env_id)
+            if size_match:
+                self.env_width = int(size_match.group(1))
+                self.env_height= int(size_match.group(2))
+            else:
+                raise ValueError(f"Cannot extract env size from env_id: {env_id}")
+
+        # the LLM client is based on the standard implementation defined in the relative file
+        # currently interaction with LLM is purely STATELESS (i.e. no conversation memory)
+        #keep a chat history, the LLM will see N different versions of compute_reward often mixes them up
+        # we do manually formatting the prompt with {previous_code} and {feedback}, this ensures LLM pays attention to the exact thing we want it to fix, rather than getting lost in a long conversation log.
+        # PROOF:
+        # this approach is confirmed byt the eureka paper that talks about Evolutionary Algorithm, not a Conversational Agent
+        # Moreover the Algorithm 1 showes that each time they query the LLM for reflection thay add to the prompt the previous code, this would not be necessary in a conversational agent that has memory of past messages
+        self.llm_model = llm_model      
+          
         self.best_code = None
         self.best_reward = -float('inf')
 
-        self.evaluation_epochs = evaluation_epochs
-        self.evaluation_max_steps = evaluation_max_steps
+        # numero di volte refine prompt and reward function
+        self.reflection_iterations = reflection_iterations
+
+        # parameters regarding the training phase before the evaluation
+        self.training_epochs = training_epochs
+        self.train_max_steps = train_max_steps
+
+        # evaluation params
+        self.num_eval_episodes = num_eval_episodes
+
         self.pure_rl_baseline = pure_rl_baseline
 
     def clean_code_string(self, llm_output):
@@ -39,7 +74,8 @@ class EurekaSearch:
             print("[EUREKA-SEARCH ERROR] No code found in LLM output-> retunding empty string")
             return ""
         else:
-            print(f"LLM Output:\n{llm_output}\n{'-'*40}")
+            #[debug] print the function generated
+            #print(f"LLM Output:\n{llm_output}\n{'-'*40}")
             code_match = re.search(r"```python(.*?)```", llm_output, re.DOTALL)
             if code_match:
                 print("the code had the python tags")
@@ -48,100 +84,16 @@ class EurekaSearch:
                 print("the code had no python tags but contains 'def compute_reward'")
                 return llm_output
         
-
-    # def evaluate_candidate(self, reward_code):
-    #     """
-    #     quality check of the current python function returned by the LLM
-    #     Runs a QUICK training session check if the agent learns
-    #     if not learning ask the llm to improve the code
-    #     """
-    #     try:
-    #         env = make_minigrid_env(
-    #             env_id=self.env_id,
-    #             render_mode="rgb_array", 
-    #             eureka_reward_code=reward_code,
-    #             use_llm_rewards=False, 
-    #             max_steps=self.evaluation_max_steps  # Short horizons for quick checks
-    #         )()
-
-    #         policy = PPO(
-    #             env=env,
-    #             gamma=0.99,
-    #             epsilon=0.2,
-    #             epochs=self.evaluation_epochs,  # SHORT TRAINING just to see slope
-    #             model_name=self.pure_rl_baseline
-    #         )
-
-    #         # policy.batch_size = 4096
-    #         # policy.rollout.iterations = 8192
-    #         print(f"[Eureka] Training policy with: batch_size={policy.batch_size}, rollout.iterations={policy.rollout.iterations}")
-                        
-    #         # 3. Train
-    #         policy.trainer()
-                        
-    #         # =========================================================================
-    #         # 4. Extract Stats to Evaluate Reward Function Quality --> CRITIC ASPECT
-    #         # =========================================================================
-    #         # in this section evaluate the agent performance after training
-    #         # to udnerstand wether the reward function is good or not
-    #         # how to check if the agent is learning?
-    #         #
-    #         # - read some logs/stats from the training?
-    #         #
-    #         # - run a few eval episodes and see if rewards improved 
-    #         #   =>Problem how to estimate improvement? 
-    #         #      - based on the reward obtained?       
-    #         #      - based on how far from the goal it gets?
-    #         #      - based on success rate of solving env?
-    #         #      - based on steps to solve? (has the key? has passed door? has reached goal?)
-    #         # =========================================================================
-
-    #         # let's run a quick eval episode
-    #         total_rewards = []
-    #         successes = 0
-    #         eval_episode_num = 5
-    #         print("====[EVALUATION OF LLM_REWARD_FUNCTION]====")
-    #         for _ in range(eval_episode_num):
-    #             obs, _ = env.reset()
-    #             done = False
-    #             ep_reward = 0
-    #             while not done:
-    #                 action = policy.get_action(obs)
-    #                 obs, reward, terminated, truncated, _ = env.step(action)
-    #                 done = terminated or truncated
-    #                 ep_reward += reward
-    #                 print(f"LLM-Reward: {reward}")
-                    
-    #                 #==CRITICAL==
-    #                 # NON PENSO Vada bene perché reward restituita solo se lo risolve
-    #                 # con un train cosi basso come puó'risolverlo?
-    #                 # SE MINIGRID É PIÚ GRANDE DI 5X5 COME CAMBIA?
-    #                 if reward > 0.5: 
-    #                      successes += 1
-
-    #                 # Check if episode ended due to reaching goal (terminated=True, not truncated)
-    #                 # same problem of before
-    #                 # if terminated and not truncated:
-    #                 #     successes += 1
-
-    #             total_rewards.append(ep_reward)
-
-    #         mean_reward = np.mean(total_rewards)
-    #         success_rate = successes / eval_episode_num
-    #         return mean_reward, success_rate, None
-
-    #     except Exception as e:
-    #         print(f"[Eureka Search Error] Evaluation failed: {e} -> retunrning -inf reward")
-    #         return -float('inf'), 0.0, str(e)
-
     #=====================================================
     #       EVALUATE HEURISTIC PYTHON FUNCTION V2
     #=====================================================
-    def evaluate_candidate_v2(self, reward_code, num_eval_episodes=10):
+    def evaluate_candidate_v2(self, reward_code):
         """
-        Evaluates reward function quality through:
-        2. Task completion metrics (success rate, key pickup, door opening)
-        3. Behavioral metrics (exploration coverage)
+        Evaluates reward function quality through both:
+        - Training metrics (reward improvement during training) 
+            -> less informative more noise takes random action to explore so may not reflect the reward function quality
+        - Evaluation metrics (success rate, key pickup, door opening)
+            -> more robust agent freezed from learning and tested on multiple different episodes
         """       
 
         try:
@@ -151,31 +103,37 @@ class EurekaSearch:
                 render_mode="rgb_array", 
                 eureka_reward_code=reward_code,
                 use_llm_rewards=False, 
-                max_steps=self.evaluation_max_steps  # Short horizons for quick checks                 
+                max_steps=self.train_max_steps  # Short horizons for quick checks                 
             )()
 
             policy = PPO(
                 env=env,
                 gamma=0.99,
                 epsilon=0.2,
-                epochs=self.evaluation_epochs,  # SHORT TRAINING just to see slope
-                model_name=self.pure_rl_baseline
+                epochs=self.training_epochs,  # SHORT TRAINING just to see slope
+                model_name=self.pure_rl_baseline,
+
+                save_pkl_model=False  # Do not save model during Eureka evaluations
             )
             
-            reward_delta = 0.0
+            train_reward_delta = 0.0
+            print("\n====[TRAINING WITH LLM_REWARD_FUNCTION]====\n")
             try:
                 training_history = policy.trainer(
                                                 early_stopping_threshold=None # avoid early stopping during evaluation
                                                 )
-
+                
+                # ====================
+                # TRAINING METRICS               
                 # Analyze training history for reward improvement
+                # ====================
                 if training_history and len(training_history) > 1:
                     # Compare average of last 3 epochs vs first 3 epochs
                     start_perf = np.mean(training_history[:3])
                     end_perf = np.mean(training_history[-3:])
-                    reward_delta = end_perf - start_perf
+                    train_reward_delta = end_perf - start_perf
                 else:
-                    reward_delta = 0.0
+                    train_reward_delta = 0.0
 
             except Exception as train_err:
                 print(f"[Eureka] Training failed with error: {train_err}")
@@ -186,13 +144,6 @@ class EurekaSearch:
             # ====================
             # EVALUATION METRICS
             # ====================
-
-            #----------------metric 1----------------
-            # MODIFY THE TRAININER FUNCTION TO return episode rewards during training
-            # AND SEE IF THERE IS A SLOPE IN THE REWARD ACCUMULATED OR NOT
-            #----------------------------------------
-
-            # Metric 2: Task Completion Metrics
             eval_stats = {
                 'successes': 0,
                 'key_pickups': 0,
@@ -201,8 +152,9 @@ class EurekaSearch:
                 'steps_to_success': []
             }
                         
-            print("====[EVALUATION OF LLM_REWARD_FUNCTION]====")
-            for ep_idx in range(num_eval_episodes):
+            print("\n\n====[EVALUATION OF LLM_REWARD_FUNCTION]====")
+            print(f"Running {self.num_eval_episodes} evaluation episods to check the quality of the LLM-generated RwdFunc")
+            for ep_idx in range(self.num_eval_episodes):
                 obs, _ = env.reset()
                 done = False
                 ep_reward = 0
@@ -246,6 +198,10 @@ class EurekaSearch:
                     # Step
                     obs, reward, terminated, truncated, info = env.step(action)
 
+                    # check if in the evaluation the goal was reached
+                    if terminated and not truncated:
+                        print(f"\t\t[Evaluation Phase] ep:{ep_idx+1} reached the goal")
+
                     done = terminated or truncated
                     ep_reward += reward
                     steps += 1
@@ -274,12 +230,12 @@ class EurekaSearch:
                 if opened_door:
                     eval_stats['door_opens'] += 1
                 eval_stats['total_rewards'].append(ep_reward)
-            print(f"  Eval ep {ep_idx+1}: reward={ep_reward:.2f}, steps={steps}, key={picked_up_key}, door={opened_door}")
-        
+                print(f"  Eval ep {ep_idx+1}: reward={ep_reward:.2f}, key={picked_up_key}, door={opened_door}", flush=True)
+                
             # Calculate final metrics
-            success_rate = eval_stats['successes'] / num_eval_episodes
-            key_pickup_rate = eval_stats['key_pickups'] / num_eval_episodes
-            door_open_rate = eval_stats['door_opens'] / num_eval_episodes
+            success_rate = eval_stats['successes'] / self.num_eval_episodes
+            key_pickup_rate = eval_stats['key_pickups'] / self.num_eval_episodes
+            door_open_rate = eval_stats['door_opens'] / self.num_eval_episodes
             mean_reward = np.mean(eval_stats['total_rewards'])
             mean_steps_to_success = np.mean(eval_stats['steps_to_success']) if eval_stats['steps_to_success'] else float('inf')
             
@@ -301,7 +257,7 @@ class EurekaSearch:
                 'door_open_rate': door_open_rate,
                 'mean_reward': mean_reward,
                 'mean_steps': mean_steps_to_success,
-                'reward_delta': reward_delta
+                'train_reward_delta': train_reward_delta
             }, None  # No error
             
         except Exception as e:
@@ -319,13 +275,125 @@ class EurekaSearch:
                 'door_open_rate': 0.0,
                 'mean_reward': -float('inf'),
                 'mean_steps': float('inf'),                
-                'reward_delta': reward_delta
+                'train_reward_delta': train_reward_delta
             }, str(e)
 
+    
+    def _analyze_general_trend(self, delta, success_rate, mean_reward):
+        """
+        Combines Delta (Learning) and Success (Performance) to diagnose the agent state.
+        Returns a high-priority string if a major issue is found.
+        """
+        # 1. Reward Hacking cHECK
+        # If the agent is learning rapidly (High Delta) but failing in validation (Zero Success)
+        # OR if the agent has accumulated massive rewards (High Mean) with Zero Success in Eval
+        if (delta > 0.1 or mean_reward > 5.0) and success_rate < 0.05:
+            return (
+                f"CRITICAL WARNING - MISALIGNED OBJECTIVES (Reward Hacking): "
+                f"The agent is improving its reward (delta: +{delta:.2f}) or collecting high rewards ({mean_reward:.2f}), "
+                f"but Success Rate is effectively ZERO ({success_rate*100:.1f}%). "
+                f"DIAGNOSIS: The agent has found a way to 'game' the system (e.g., spinning, standing near key) without solving the task. "
+                f"FIX: You MUST punish the agent for not progressing, or cap the maximum reward for sub-goals."
+            )
 
-    def run(self):
-        current_prompt = EUREKA_INITIAL_PROMPT_DOORKEY
+        # 2. THE "SPARSE REWARD" CHECK (Stagnation)
+        # Flat delta and no success means the agent is just wandering randomly
+        if abs(delta) < 0.05 and success_rate < 0.05:
+            return (
+                "STAGNATION DETECTED: The agent is learning NOTHING (Reward Delta near zero, Success near zero). "
+                "DIAGNOSIS: The reward signal is too weak."
+                "FIX: Create a DENSE reward field to guide the agent."
+            )
+            
+        # 3. THE "UNLEARNING" CHECK (Collapse)
+        if delta < -0.5:
+             return (
+                 f"WARNING: TRAINING COLLAPSE. The reward trend is negative (delta: {delta:.2f}). "
+                 "The agent is actively getting worse. "
+                 "FIX: Check if you are applying too many negative penalties (living costs) that drive the agent to suicide/early termination."
+             )
+
+        # 4. REAL PROGRESS
+        if delta > 0.1 and success_rate > 0.0:
+            return f"PROMISING: Valid Learning Detected. Reward is increasing (+{delta:.2f}) and Success Rate is non-zero ({success_rate:.2f})."
+
+        return ""
+
+    def _generate_feedback(self, metrics):
+        """Generate stage-specific diagnostic feedback"""
+        feedback = []
         
+        # --- 1. General Diagnosis over Train and Eval
+        trend_msg = self._analyze_general_trend(
+            metrics.get('train_reward_delta', 0.0), 
+            metrics['success_rate'],
+            metrics['mean_reward']
+        )
+        if trend_msg:
+            feedback.append(trend_msg)
+            # If it's reward hacking emphasize it heavily
+            if "MISALIGNED" in trend_msg:
+                feedback.append("--- IMMEDIATE FIX REQUIRED ---")
+                feedback.append("Do not focus on specific stages below until the Misalignment is fixed.")
+        
+        # --- 2. Stage-Specific Analysis ---        
+        # KEY PICKUP (Stage 1)
+        if metrics['key_pickup_rate'] < 0.2:
+            feedback.append(
+                "STAGE 1 FAILURE (Key): The agent almost never picks up the key. The key_pickup_rate < 0.2. "
+                "CONSIDER THE FOLLOWING: "
+                "(1) Ensure your distance reward guides the agent explicitly to the key location "
+                "(2) Provides a massive ONE-TIME bonus for the 'pickup' action."
+            )        
+        # elif because if the first stage is failed do not check the next ones
+
+        # DOOR OPEN (Stage 2)
+        elif metrics['key_pickup_rate'] > 0.5 and metrics['door_open_rate'] < 0.2:
+            feedback.append(
+                "STAGE 2 FAILURE (Door): The agent has the key but fails to open the door. The door_open_rate < 0.2. "
+                "CONSIDER THE FOLLOWING: "
+                "(1) The agent likely doesn't know it needs to walk TO the door. "
+                "Add a dense distance reward based on dist-to-door ONLY IF carrying_key is True."
+                "(2) Provide a substantial ONE-TIME bonus for the 'open door' action."
+                "(3) Check again the INTERACTION RULES"
+            )
+            
+        # GOAL (Stage 3)
+        elif metrics['door_open_rate'] > 0.5 and metrics['success_rate'] < 0.2:
+            feedback.append(
+                "STAGE 3 FAILURE (Goal): The agent opens the door but wanders off. The success_rate < 0.2. "
+                "CONSIDER THE FOLLOWING: "
+                "Ensure that AFTER the door is open, the distance reward switches target to the GOAL."
+            )
+
+        # --- 3. Efficiency ---        
+        if metrics['success_rate'] > 0.8 and metrics['mean_steps'] > 80:
+            feedback.append("OPTIMIZATION: High success rate but takes too many steps (mean_steps > 80) "
+                            "CONSIDER THE FOLLOWING: "
+                            "Try adding a small step penalty to encourage speed.")
+
+        # Final Formatting
+        if not feedback:
+            return "Observation: Performance is average. No specific critical errors detected. Try to tune weights."
+            
+        print("\nGenerated Feedback")
+        print(feedback)
+        return "\n\n".join(feedback)
+    
+
+    def find_best_RwdFunc(self):
+        #prompt che serve per inviare inieme a old code per feedback
+        context_prompt = MINIGRID_API_CONTEXT_DOORKEY.format(
+            width=self.env_width,
+            height=self.env_height,
+        )
+
+        # prompt iniziale senza feedback che serve per la prima generazione
+        current_prompt = EUREKA_INITIAL_PROMPT_DOORKEY.format(
+            width=self.env_width,
+            height=self.env_height,
+        )
+            
         for i in range(self.reflection_iterations):
             print(f"\n>>> Iteration to improve HEURISTIC: {i+1}/{self.reflection_iterations}")
             
@@ -341,14 +409,13 @@ class EurekaSearch:
                 print(f"[Eureka Search] iteration:{i}/{self.reflection_iterations} No valid code generated, skipping evaluation.")
                 continue
                 
-            # 2. Evaluate
-            #----evaluuate v1
-            #mean_rew, success, err = self.evaluate_candidate(code)
-            #print(f"Stats -> Mean Reward: {mean_rew:.3f}, Success: {success:.2f}")
-
             #----evaluate v2
             eval_stats, err = self.evaluate_candidate_v2(code)
-            print(f"Stats \n-> {eval_stats}\n")
+            print("- "*20 + "\nEvaluation Metrics:")
+            for k, v in eval_stats.items():
+                print(f"  {k}: {v}")
+            print("- "*20)
+
             mean_rew = eval_stats['mean_reward'] # the mean of the total_summed_reward per episode
             success = eval_stats['success_rate']
 
@@ -356,37 +423,43 @@ class EurekaSearch:
             if mean_rew > self.best_reward:
                 self.best_reward = mean_rew
                 self.best_code = code
-                print("\n--- New Best Reward Function ---\n")
                 
                 if "deepseek-r1" in self.llm_model.model_name or "deepseek-r1:8b" in self.llm_model.model_name:
-                    model_name = "DeepSeek_R1_8b"
+                    model_name = "DeepSeekR1_8b"
                 elif "deepseek-v3.1" in self.llm_model.model_name or "deepseek-v3" in self.llm_model.model_name or "671b-cloud" in self.llm_model.model_name:
-                    model_name = "DeepSeek_671b"
+                    model_name = "DeepSeek671b"
                 elif "phi3.5" in self.llm_model.model_name or "phi3_5" in self.llm_model.model_name or self.llm_model.model_name.startswith("phi3"):
                     model_name = "Phi3_5"
+                elif "sonar-reasoning-pro" in self.llm_model.model_name.lower() or "sonar" in self.llm_model.model_name.lower():
+                    model_name = "Perplexity"
                 else:
                     model_name = "UnknownModel"
 
-                if "5x5" in self.env_id and "DoorKey" in self.env_id:
-                    name_env = "DoorKey_5x5"
-                elif "8x8" in self.env_id and "DoorKey" in self.env_id:
-                    name_env = "DoorKey_8x8"
-                elif "5x5" in self.env_id and "Empty" in self.env_id:
-                    name_env = "Empty_5x5"
-                elif "8x8" in self.env_id and "Empty" in self.env_id:
-                    name_env = "Empty_8x8"
+                if "DoorKey" in self.env_id:
+                    name_env = "DoorKey"+str(self.env_width)+"x"+str(self.env_height)
+                elif "Empty" in self.env_id:
+                    name_env = "Empty"+str(self.env_width)+"x"+str(self.env_height)
                 else:
                     name_env = "UnknownEnv"
 
-                with open(f"best_RwdFunc_{name_env}_{model_name}.py", "w") as f:
+                with open(f"BestRwdFunc_{name_env}_{model_name}.py", "w") as f:
                     f.write(code)
 
-            # 4. Feedback
-            # V1 VERSION feedback_text = "The agent is stuck." if success < 0.1 else "Good progress."
+            # 4. Feedback V2 VERSION
 
-            # V2 VERSION
-            # create a dettailed feedback based on the eval stats to add to the feedback prompt
-            feedback_text = self._generate_feedback(eval_stats)
+            if err:
+                # --- CRITICAL FIX ---
+                # If the code crashed, the stats (0.0, -inf) are fake. 
+                # Do NOT generate strategy feedback. Force LLM to focus ONLY on the bug.
+                feedback_text = (
+                    "CRITICAL ERROR: The code failed to execute. "
+                    "Do not try to improve the reward logic yet. "
+                    "Focus EXCLUSIVELY on fixing the Python syntax error listed in the ERROR LOGS."
+                )
+            else:                
+                # create a dettailed feedback based on the eval stats to add to the feedback prompt
+                # Only analyze performance if the code actually ran
+                feedback_text = self._generate_feedback(eval_stats)
 
             previous_code = code
             #if pyhton badge already present do not add again
@@ -395,7 +468,10 @@ class EurekaSearch:
             else:
                 previous_code = f"\n{code}\n"
 
-            current_prompt = EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY.format(
+            # Ensure err is a string for the prompt, defaulting to "None" if it is None
+            error_string = str(err) if err else "None"
+
+            feedback_prompt_body = EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY.format(
                 #1. the previous code submitted must be the first thing in the prompt 
                 previous_code=code, 
                 
@@ -407,109 +483,87 @@ class EurekaSearch:
                 mean_reward=eval_stats['mean_reward'],
 
                 #3. error log if any
-                error_log=err,
+                error_log=error_string,
                 feedback_text=feedback_text
             )
 
-            print("- "*20)
-            print("New Feedback prompt for LLM")
-            print(current_prompt)
-            print("-"*20)
-            
-    def _analyze_reward_slope(self, delta, success_rate):
-        """Analyzes if the agent was learning, unlearning, or stagnant."""
-        # If the agent is already solving the task, the slope matters less
-        if success_rate > 0.1:
-            return "" 
-            
-        if delta > 0.5:
-            return "PROMISING: The agent is LEARNING (positive reward slope during training) but ran out of time. The reward shaping is likely valid but too weak."
-        elif delta < -0.5:
-            return "WARNING: The agent is UNLEARNING (negative reward slope). The reward function might be encouraging suicidal or cyclic behavior."
-        elif abs(delta) < 0.1:
-            return "STAGNANT: The agent learned NOTHING (flat reward slope). The reward is too sparse or gradients are zero."
-        
-        return ""
+            #in previous version the new prompt after the initial was only the feedback prompt body
+            # giving that the interaction with the LLM is stateless (no chat conversation) we need to always add the context!
+            current_prompt = context_prompt + "\n\n" + feedback_prompt_body
 
-    def _generate_feedback(self, metrics):
-        """Generate stage-specific diagnostic feedback"""
-        feedback = []
 
-        # 1. Insert the Slope Analysis at the very top of feedback
-        slope_msg = self._analyze_reward_slope(metrics.get('reward_delta', 0.0), metrics['success_rate'])
-        if slope_msg:
-            feedback.append(slope_msg)
-        
-        # --- CHECK FOR REWARD HACKING ---
-        # Heuristic: High Reward but Low Success implies the agent is farming points
-        # Threshold: If mean_reward is > higher then arbitrary high number but success is < 10%
-        if metrics['mean_reward'] > 5.0 and metrics['success_rate'] < 0.1:
-            feedback.append(
-                f"CRITICAL WARNING - REWARD HACKING DETECTED: "
-                f"The agent accumulated a massive reward ({metrics['mean_reward']:.2f}) but failed to solve the task. "
-                "The agent is likely exploiting a bug (e.g., wiggling back and forth or toggling a switch repeatedly). "
-                "FIX: Ensure rewards for repetitive actions (like distance or toggling) are strictly limited or potential-based."
-            )
-            return "\n".join(feedback) # Return immediately, this is the priority fix
-        
-        # --- Stage 1: Key Pickup ---
-        if metrics['key_pickup_rate'] < 0.3:
-            feedback.append(
-                "CRITICAL: Agent rarely picks up the key (<30%). "
-                "The reward function likely fails to guide the agent toward the key. "
-                "Consider: (1) stronger distance-based shaping to key location, "
-                "(2) substantial bonus for picking up key, "
-                "(3) check if key location detection works correctly."
-            )
-        elif metrics['key_pickup_rate'] < 0.7:
-            feedback.append(
-                "MODERATE: Agent sometimes picks up key (30-70%). "
-                "Reward shaping toward key is partially working but unstable. "
-                "Consider: increasing key pickup reward or smoothing distance rewards."
-            )
+            #[debug]
+            # print("- "*20)
+            # print("New Feedback prompt for LLM")
+            # print(current_prompt)
+            # print("-"*20)
+
+
+        #=============
+        # AFTER EVALUATION RETURN CODE TO DO THE FINAL BIG RUN OVER THE BEST REWARD FUNCTION
+        #=============        
+        print("\n\n===[EUREKA SEARCH COMPLETE]===")
+        if self.best_code is None:
+            print("No valid reward function was generated during the search")
+            return
         else:
-            feedback.append("GOOD: Agent consistently picks up key (>70%).")
+            print("Best Reward Function Found")
+            return self.best_code
         
-        # --- Stage 2: Door Opening ---
-        if metrics['key_pickup_rate'] > 0.7 and metrics['door_open_rate'] < 0.3:
-            feedback.append(
-                "CRITICAL: Agent picks up key but rarely opens door (<30%). "
-                "The reward function fails to guide the agent from key to door. "
-                "Consider: (1) distance-based reward to door AFTER key pickup, "
-                "(2) substantial bonus for opening door, "
-                "(3) check door detection logic."
-            )
-        elif metrics['door_open_rate'] > 0.7:
-            feedback.append("GOOD: Agent consistently opens door (>70%).")
+    
+    def train_final_model(self, 
+                          reward_code_str=None, 
+                          final_train_epochs=200,
+                          final_train_max_steps=300
+                          ):
+        """
+        Takes the best reward function found during the search
+        and trains a fresh agent for a longer duration.
+        """
+       
+        if reward_code_str is None:
+            print("[\u26A0 Warning] No reward_code_str provided, using the best code found during search.")
+            reward_code_str = self.best_code
+        else:
+            if reward_code_str != self.best_code:
+                print("[\u26A0 Warning] The provided reward_code_str does not match the best code found during search.")
+            else:
+                print("[\u2705 Info] Using the provided reward_code_str for final training.")
+    
+        print("\n" + "="*60)
+        print(f"STARTING FINAL TRAINING RUN\n")
+        print(f'Epochs: {final_train_epochs}\nMax Steps: {final_train_max_steps}\nUsing Baseline RL: {self.pure_rl_baseline}')
+        print("="*60)
+
+        # 1. Create Environment using the BEST reward function
+        # We assume make_minigrid_env can accept 'eureka_reward_code'
+        final_env = make_minigrid_env(
+            env_id=self.env_id,
+            render_mode="rgb_array", 
+            eureka_reward_code=reward_code_str, 
+            use_llm_rewards=False, 
+            max_steps=final_train_max_steps  
+        )()
+
+        # 2. Setup PPO with more epochs than the search phase
+        final_policy = PPO(
+            env=final_env,
+            gamma=0.99,
+            epsilon=0.2,
+            epochs=final_train_epochs, 
+            model_name=f"{self.pure_rl_baseline}_FINAL_BEST",
+
+            save_pkl_model=True  # NOW Save the final model
+        )
+
+        # 3. Train
+        final_policy.trainer()
         
-        # --- Stage 3: Goal Reaching ---
-        if metrics['door_open_rate'] > 0.7 and metrics['success_rate'] < 0.3:
-            feedback.append(
-                "CRITICAL: Agent opens door but rarely reaches goal (<30%). "
-                "The reward function fails to guide from door to goal. "
-                "Consider: (1) very strong distance-based reward to goal after door opens, "
-                "(2) massive bonus for reaching goal, "
-                "(3) ensure goal detection works."
-            )
-        elif metrics['success_rate'] > 0.5:
-            feedback.append(
-                f"EXCELLENT: High success rate ({metrics['success_rate']*100:.1f}%). "
-                f"Now optimize for efficiency - current average {metrics['mean_steps']:.0f} steps."
-            )
+        # 4. Save
+        save_path = f"final_model_{self.env_id}_.pt"            
+        torch.save(final_policy.policy_net.state_dict(), save_path)
         
-        # --- Efficiency analysis ---
-        if metrics['success_rate'] > 0.3 and metrics['mean_steps'] > 100:
-            feedback.append(
-                "EFFICIENCY ISSUE: Agent solves task but takes too many steps. "
-                "Consider: adding small negative step penalty or stronger direct-path rewards."
-            )
-        
-        # --- Overall assessment ---
-        if not feedback:
-            feedback.append(
-                "STAGNATION: No clear progress on any task stage. "
-                "The reward function may be too sparse or have conflicting signals. "
-                "Consider: complete redesign focusing on dense distance-based shaping."
-            )
-        
-        return "\n".join(feedback)
+        return final_policy
+
+
+            

@@ -41,12 +41,12 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
             if 'message' in response and 'content' in response['message']:
                 raw_text = response['message']['content']
 
-                if self.reasoning == True and response['message']['thinking']:
-                    # [debug] print CoT
-                    print("\n" + "-"*40)
-                    print("CoT of DeepSeek-Cloud-671b:")
-                    print(response['message']['thinking'])
-                    print("="*40 + "\n")
+                # if self.reasoning == True and response['message']['thinking']:
+                #     # [debug] print CoT
+                #     print("\n" + "-"*40)
+                #     print("CoT of DeepSeek-Cloud-671b:")
+                #     print(response['message']['thinking'])
+                #     print("="*40 + "\n")
 
                 # clean the specific DeepSeek artifacts here
                 cleaned_response = self.clean_json_text_DeepSeek(raw_text)

@@ -9,17 +9,17 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
-from src.methods.llm_guided.DeepSeek671b import DeepSeekCloud671b_Client
+from src.methods.llm_guided.Perplexity import PerplexityClient
 from src.methods.llm_guided.EurekaApproach.eureka_search import EurekaSearch
 
 if __name__ == "__main__":
 
     try:
         # Initialize the client
-        llm = DeepSeekCloud671b_Client(
-            reasoning=True, 
-            temperature=0.6   # for reasoning model is better a bit higher temp   
-            )
+        llm = PerplexityClient(
+            model_name="sonar-reasoning-pro",
+            temperature=0.6
+        )
         print(f"Model: {llm.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")
@@ -31,7 +31,7 @@ if __name__ == "__main__":
         env_id="MiniGrid-DoorKey-5x5-v0",
         llm_model=llm,
 
-        reflection_iterations=2, # numero di volte che provi a miglioreare la reward heuristic returned by llm
+        reflection_iterations=3, # numero di volte che provi a miglioreare la reward heuristic returned by llm
         
         training_epochs=50,  # numb of epochs to train the model with each candidate reward function
         train_max_steps= 300, # max steps per training episode

@@ -54,14 +54,29 @@ class EurekaRewardWrapper(gym.Wrapper):
         
         # Calculate Intrinsic Reward using the generated function
         # Pass self.unwrapped so the code can access .grid, .agent_pos, etc.
-        try:
-            intrinsic_reward = self.reward_function(self.unwrapped)
-            if intrinsic_reward is None: 
-                print("[Eureka Wrapper Warning] Reward function returned None -> defaulting intrinsic_reward: 0.0")
-                intrinsic_reward = 0.0
-        except Exception as e:
-            print(f"[Eureka Wrapper Error] Reward function execution failed: {e}\n -> defaulting intrinsic_reward: 0.0")
-            intrinsic_reward = 0.0
+        
+        # EXECUTE REWARD FUNCTION WITHOUT TRY/EXCEPT
+        # We want this to raise an exception if the LLM code is buggy.
+        # This allows the Search class to catch it and report the specific error text to the LLM.
+        intrinsic_reward = self.reward_function(self.unwrapped)
+
+        if intrinsic_reward is None: 
+            # print("[Eureka Wrapper Warning] Reward function returned None -> defaulting intrinsic_reward: 0.0")
+            # intrinsic_reward = 0.0            
+            # This is a soft error, we can handle it gracefully or raise it. 
+            # Usually better to raise so LLM fixes it.
+            raise ValueError("Reward function returned None")
+
+        #if intrisic reward returned by the LLM-generated reward function is out of bounds
+        if intrinsic_reward < -0.1 or intrinsic_reward > 1.0:
+            print(f"\n[WARNING Eureka Wrapper] Reward function returned out-of-bounds value {intrinsic_reward}\n")
+            ### do not clip it is too invasive intrinsic_reward = max(-0.1, min(1.0, intrinsic_reward))
+    
+        # if you catch the error here the error will never reach the search function 
+        # where you give feedback to the llm so it wont be able to improve the code
+        # except Exception as e:
+        #     print(f"[Eureka Wrapper Error] Reward function execution failed: {e}\n -> defaulting intrinsic_reward: 0.0")
+        #     intrinsic_reward = 0.0
             
         #keep track 
         self.cumulative_intrinsic_reward += float(intrinsic_reward)
@@ -71,10 +86,10 @@ class EurekaRewardWrapper(gym.Wrapper):
             print(f"=> Env Solved: {reward}")
 
         # i think is better to send to the pure rl alg ONLY THE INTRINSIC REWARD-> TO AVOID HAVING DIFFERNT SCALES
-        total_reward = float(intrinsic_reward)
+        #total_reward = float(intrinsic_reward)
 
         # send to the pure RL alg the INTRINSIC REWARD + env reward
-        #total_reward = reward + float(intrinsic_reward)
+        total_reward = reward + float(intrinsic_reward)
         
         return obs, total_reward, terminated, truncated, info
 

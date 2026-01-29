@@ -28,7 +28,8 @@ class PPO(Policy):
             epochs : int = 100,
             output_dim : int | None = None, 
             encode_dim : int = 128,          
-            model_name : str = "PPO"            
+            model_name : str = "PPO",
+            save_pkl_model: bool = True  # di default salva il modello migliore  
             ):
 
         super().__init__(env=env, gamma=gamma, epsilon=epsilon, model_name=model_name)
@@ -51,6 +52,9 @@ class PPO(Policy):
         self.entropy_coeff = 0.02
         self.steps = 10
         # ...
+
+        #in eureka we don't want to save the model while finding the best reward function
+        self.save_pkl_model = save_pkl_model 
 
         self.optimizer = Adam(self.parameters(), lr = self.lr)
 
@@ -154,7 +158,8 @@ class PPO(Policy):
             if episode_reward[0] > max_rew:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f} ==> New best reward, saving")
                 max_rew = episode_reward[0]
-                self.save() 
+                if self.save_pkl_model:
+                    self.save() 
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f}")
                 
@@ -231,7 +236,8 @@ class RecurrentPPO(PPO):
             hidden_dim: int = 128,  # Match encode_dim for no bottleneck
             sequence_length: int = 16,  # TBPTT sequence length
             recurrence: str = "lstm",
-            model_name: str = "RecurrentPPO"  #with ppo recurrent save also the type of recurrence
+            model_name: str = "RecurrentPPO",  #with ppo recurrent save also the type of recurrence
+            save_pkl_model: bool = True # di default salva il modello migliore
             ):
         
         # Call PPO init but we'll override some components
@@ -254,6 +260,9 @@ class RecurrentPPO(PPO):
         
         # Lower learning rate for recurrent networks
         self.lr = 3e-4
+
+        #in eureka we don't want to save the model while finding the best reward function
+        self.save_pkl_model = save_pkl_model 
         
         # Recurrent layer
         if self.recurrence == "lstm":
@@ -581,7 +590,8 @@ class RecurrentPPO(PPO):
             if episode_reward > max_rew:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f} ==> New best reward, saving")
                 max_rew = episode_reward
-                self.save() 
+                if self.save_pkl_model:
+                    self.save() 
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f}")
 
