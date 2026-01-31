@@ -27,6 +27,7 @@ class Policy(nn.Module):
 
     def save(self):
         self.to("cpu")
+        print(f"[SAVE] Saving model to {self.model_path}")
         torch.save(self.state_dict(), self.model_path)
         self.to(self.device)
 

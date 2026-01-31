@@ -145,7 +145,7 @@ if __name__ == "__main__":
         use_llm=True,
         llm_backend='deepseek671b', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=1,
+        epochs=3,
         max_steps=250,
         verbose=True, 
         voting_samples=3

@@ -31,9 +31,13 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
             response = ollama.chat(
                 model=self.model_name,
                 options=llm_options,
-                messages=messages
+                messages=messages,
+                think=True,
             )
             
+            #print("THE RAW RESPONSE FROM DEEPSEEK IS AS SUCH:")
+            #print(response)
+
             if 'message' in response and 'content' in response['message']:
                 raw_text = response['message']['content']
                 # clean the specific DeepSeek artifacts here
