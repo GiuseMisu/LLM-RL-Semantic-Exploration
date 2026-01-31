@@ -16,20 +16,16 @@ from minigrid.wrappers import ImgObsWrapper
 from src.methods.llm_guided.llm_reward_wrapper import LLMRewardWrapper
 
 # LLM EUREKA APPROACH WRAPPER
-#from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     
+from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     
 
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-
-
 
 def make_minigrid_env(
         env_id="MiniGrid-DoorKey-5x5-v0", 
         seed: Optional[int] = None,
         render_mode="rgb_array", 
         max_steps: Optional[int] = None,
-        log_dir=None, 
-        idx=0,
 
         #[OPTIONAL PARAMETERS] needed for LLM-SCALAR REWARD 
         use_llm_rewards=False,
@@ -39,7 +35,7 @@ def make_minigrid_env(
         verbose=False,
 
         # PARAM FOR LLM-EUREKA APPROACH
-        #eureka_reward_code: Optional[str] = None
+        eureka_reward_code: Optional[str] = None
         ):
     
     """
@@ -47,8 +43,6 @@ def make_minigrid_env(
     Args:
         env_id (str): The environment ID: e.g., "MiniGrid-DoorKey-5x5-v0" or "MiniGrid-Empty-5x5-v0"
         render_mode (str): 'rgb_array' for training, 'human' for visualization
-        log_dir (str): Directory to save Monitor logs
-        idx (int): Unique index for this environment (useful for multi-process logging)
     LLM integration Args:
         use_llm_rewards (bool): Whether to use LLM-augmented rewards
         llm_client: Instance of RobustCachedLLMClient (or None for pure RL)
@@ -79,11 +73,11 @@ def make_minigrid_env(
             )
 
         #EUREKA APPROACH
-        # We wrap with Eureka first (to calculate reward), then ImgObs (for PPO compatibility)
-        # elif eureka_reward_code is not None:
-        #     print(f"[Env Setup] Wrapping environment -> EurekaRewardWrapper for: {env_id}")
-        #     env = EurekaRewardWrapper(env, eureka_reward_code)
-        #     env = ImgObsWrapper(env)
+        # wrap with Eureka first (to calculate reward), then ImgObs (for PPO compatibility)
+        elif eureka_reward_code is not None:
+            print(f"[Env Setup] Wrapping environment -> EurekaRewardWrapper for: {env_id}")
+            env = EurekaRewardWrapper(env, eureka_reward_code)
+            env = ImgObsWrapper(env)
 
         else:  
             print(f"[Env Setup] Using PURE RL (no LLM) for: {env_id}")

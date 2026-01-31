@@ -51,8 +51,8 @@ class DeepSeekLLMClient(BaseLLMClient):
 
         except Exception as e:
             raise ConnectionError(
-                            f"[Error] Could not connect to Ollama: {e}\n"
-                            "Make sure Ollama is running ('ollama serve') and the model is pulled"
+                            f"[DeepSeek_R1 Error] Could not connect to Ollama: {e}\n"
+                            "Make sure Ollama is running"
                         )
 
 # Simple check if run directly
