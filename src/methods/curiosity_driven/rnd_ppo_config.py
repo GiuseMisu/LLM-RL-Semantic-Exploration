@@ -16,10 +16,12 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import gymnasium as gym
 import numpy as np
+import re
 
 from src.methods.pure_rl.ppo.ppo_config import PPO
 from src.methods.pure_rl.utils.network import BaseNet, MiniGridCNN
 from src.methods.curiosity_driven.rnd_rollout import RNDRollout
+from src.common.metrics import MetricsTracker
 
 """
 PPO but Random Network Distillation.
@@ -46,7 +48,9 @@ class RNDPPO(PPO):
             epochs : int = 100,
             model_name : str = "RNDPPO",
 
-            intrinsic_reward_coeff : float = 0.005  #Scale intrinsic rewards
+            intrinsic_reward_coeff : float = 0.005,  #Scale intrinsic rewards
+
+            track_stats: bool = True
             ):
 
         super().__init__(
@@ -58,6 +62,26 @@ class RNDPPO(PPO):
                         encode_dim=encode_dim,
                         model_name=model_name
                         )
+
+        #================Extract Env Type and Model Name For File Name================
+        self.env_type = "unknown"
+        if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
+            env_id = env.unwrapped.spec.id
+            size_match = re.search(r'(\d+)x(\d+)', env_id)
+            if size_match:
+                env_dimension = size_match.group(1) + 'x' + size_match.group(2)
+                if "empty" in env_id.lower() or "minigrid-empty" in env_id.lower() :
+                    self.env_type = "EMPTY_" + env_dimension
+                elif "door" in env_id.lower()  and "key" in env_id.lower()  or "doorkey" in env_id.lower() :
+                    self.env_type = "DOORKEY_" + env_dimension
+                else:
+                    print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
+                    self.env_type = "OTHER_" + env_dimension
+            else:
+                print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")
+        
+        self.model_name = model_name
+        #==============================================================================
 
         # RND feature dimension
         self.rnd_feature_dim = rnd_dim
@@ -114,6 +138,8 @@ class RNDPPO(PPO):
 
         # Use RND-specific rollout with dual advantage streams
         self.rollout = RNDRollout(self.env, self)
+
+        self.track_stats = track_stats
 
     def compute_intrinsic_reward(self, state: torch.Tensor) -> tuple:
         """
@@ -284,6 +310,9 @@ class RNDPPO(PPO):
             batch_size=self.batch_size, shuffle=True
         )
 
+        # [LOGGING]
+        total_p_loss, total_v_loss, total_rnd_loss, total_ent, count = 0, 0, 0, 0, 0
+
         for _ in range(self.steps):
             for batch in dataset:
                 batch_states, batch_actions, old_probs, adv, ext_ret, int_ret = batch
@@ -320,6 +349,16 @@ class RNDPPO(PPO):
                 total_loss.backward()
                 self.optimizer.step()
 
+                # [LOGGING]
+                total_p_loss += policy_loss.item()
+                total_v_loss += value_loss.item()
+                total_rnd_loss += rnd_loss.item()
+                total_ent += entropy.mean().item()
+                count += 1
+                
+        return total_p_loss/count, total_v_loss/count, total_rnd_loss/count, total_ent/count #added for logging stats
+
+
     def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
         """
         Training loop for RND-PPO with SEPARATE advantage streams.
@@ -329,6 +368,11 @@ class RNDPPO(PPO):
         - Intrinsic returns with gamma_intrinsic
         - Combined advantages for policy optimization
         """
+
+        if self.track_stats:    
+            log_name = self.model_name + "_" + self.env_type
+            tracker = MetricsTracker(run_name=log_name, log_dir="logs")
+
         max_rew = -float("inf")
         consecutive_epochs_mean_reward = []
 
@@ -336,8 +380,11 @@ class RNDPPO(PPO):
             # Use dual stream forward pass
             # Returns: (avg_extrinsic, avg_intrinsic, avg_total)
             (avg_ext, avg_int, avg_total), states, actions, log_probs, advantages, \
-                extrinsic_returns, intrinsic_returns, _ = self.rollout.forward_pass_dual_stream()
+                extrinsic_returns, intrinsic_returns, eps_sizes = self.rollout.forward_pass_dual_stream()
             
+            #[LOGGING]
+            avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
+
             #three reward components:
             # - Env Reward: The actual reward from the environment (what matters for task success)
             # - Curiosity Reward: The intrinsic reward from RND (exploration bonus)
@@ -345,7 +392,9 @@ class RNDPPO(PPO):
             if avg_ext > max_rew:
                 print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f} ==> New best ENV REWARD, saving")
                 max_rew = avg_ext
-                self.save() 
+                self.save(
+                    filename=f"{self.model_name}_{self.env_type}_best_env_reward"
+                ) 
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f}")
 
@@ -364,7 +413,7 @@ class RNDPPO(PPO):
                         break
 
             # Use dual stream step with separate returns
-            self.step_dual_stream(
+            p_loss, v_loss, rnd_loss, ent = self.step_dual_stream(
                 states.to(self.device), 
                 actions.to(self.device), 
                 log_probs.to(self.device), 
@@ -372,3 +421,18 @@ class RNDPPO(PPO):
                 extrinsic_returns.to(self.device),
                 intrinsic_returns.to(self.device)
             )
+
+            if self.track_stats:
+                tracker.log(e, {
+                    "Extrinsic_Reward": avg_ext,
+                    "Intrinsic_Reward": avg_int,
+                    "Total_Reward": avg_total,
+                    "Episode_Length": avg_ep_len,
+                    "Policy_Loss": p_loss,
+                    "Value_Loss": v_loss,
+                    "RND_Loss": rnd_loss,
+                    "Entropy": ent
+                })
+        if self.track_stats:
+            tracker.save()
+            tracker.plot()
