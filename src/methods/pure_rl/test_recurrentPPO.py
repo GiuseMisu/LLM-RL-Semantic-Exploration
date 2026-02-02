@@ -17,10 +17,10 @@ from src.common.policy_evaluation import evaluate_policy
 
 def main():
 
-    env_id = "MiniGrid-DoorKey-8x8-v0"
+    env_id = "MiniGrid-Empty-5x5-v0"
+    #env_id = "MiniGrid-DoorKey-8x8-v0"
     #env_id = "MiniGrid-Empty-16x16-v0" 
-    #env_id = "MiniGrid-Empty-5x5-v0" 
-
+     
     #==============seed ti garantisce sempre steso env config ============
     # NON USARE SEED DURING TRAINGING MA SOLO IN VAL SE VUOI VEDERE UNO SPECIFICO SCENARIO
     #======================================================================
@@ -29,32 +29,35 @@ def main():
     # Create environment using your env_setup.py
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 
-                            max_steps=650 # 250 for 5x5, but 650 for 8x8
+                            max_steps=250 # 250 for 5x5, but 650 for 8x8
                             )()
     
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
     policy = RecurrentPPO(env = env, 
                           # done automatically inside the code output_dim= 4, 
-                          epochs = 250, 
+                          epochs = 25, 
                           gamma = 0.99, 
                           epsilon = 0.2,
                           encode_dim=128,  # CNN output
                           hidden_dim=128,    # LSTM hidden size
                           sequence_length=32, #32 per 8x8 env,    # TBPTT length
                           recurrence = "lstm",
-                          model_name="RecurrentPPO"
+                          model_name="RecurrentPPO",
+
+                          track_stats=False
                           )
 
-    policy.batch_size = 4096  # for 8x8 /  2048 # for 5x5
+    policy.batch_size = 2048 # 4096 for 8x8 /  2048 # for 5x5
 
     # rollout buffer size to match or exceed the batch size
-    policy.rollout.iterations = 16384  # for 8x8 / 4096 # for 5x5 
+    policy.rollout.iterations = 4096  # 16384 for 8x8 / 4096 # for 5x5 
 
     # Train the environment
     policy.trainer(
-        early_stopping_threshold = 0.93,  # average reward threshold for early stopping 
-        window_size = 10  # Number of epochs to average over
+        early_stopping_threshold=None
+        # early_stopping_threshold = 0.93,  # average reward threshold for early stopping 
+        # window_size = 10  # Number of epochs to average over
         )    
     
     # load a trained version of the environment

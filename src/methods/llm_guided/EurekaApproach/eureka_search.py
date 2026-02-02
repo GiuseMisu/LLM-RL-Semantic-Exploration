@@ -121,7 +121,8 @@ class EurekaSearch:
                 epochs=self.training_epochs,  # SHORT TRAINING just to see slope
                 model_name=self.pure_rl_baseline,
 
-                save_pkl_model=False  # Do not save model during Eureka evaluations
+                save_pkl_model=False,  # Do not save model during Eureka evaluations
+                track_stats=False  # Do not track detailed stats to save time
             )
 
             policy.batch_size = 1024 #2048  # 4096 for 8x8 / 2048 # for 5x5
@@ -335,8 +336,25 @@ class EurekaSearch:
              )
 
         # 4. REAL PROGRESS
-        if delta > 0.1 and success_rate > 0.0:
-            return f"PROMISING: Valid Learning Detected. Reward is increasing (+{delta:.2f}) and Success Rate is non-zero ({success_rate:.2f})."
+        if delta > 0.1 and success_rate > 0.0 and success_rate < 0.5:
+            return (
+            f"PROMISING: Valid Learning Detected. During training the reward is increasing (+{delta:.2f}) "
+            f"But success rate ({success_rate:.2f}) is still below 0.5. "
+            "Performance is still modest and can improve significantly — the agent is doing barely well (he solves the env less than half of the time) it can do way better. "
+            "DIAGNOSIS: The reward signal enables learning but is not yet strong or aligned enough to reach high reliability. "
+            "FIX: Increase positive incentives add or boost one-time bonuses for key subgoals, "
+            "and reduce any exploitable shaping so the agent is pushed toward higher success and efficiency."
+            )
+
+        # 5. big increse modify slightly the reward function
+        if delta > 0.5 and success_rate >= 0.5:
+            return (
+            f"GOOD PROGRESS: Strong Learning Detected. During training the reward is increasing significantly (+{delta:.2f}) "
+            f"And success rate ({success_rate:.2f}) is already above 0.5. "
+            "DIAGNOSIS: The reward signal is effective and well-aligned, enabling the agent to learn quickly and achieve moderate success. "
+            "FIX: Consider fine-tuning the reward function to further enhance performance, "
+            "such as optimizing incentives for efficiency or refining sub-goal rewards to push success rates even higher."
+            )          
 
         return ""
 
@@ -402,7 +420,7 @@ class EurekaSearch:
 
         # Final Formatting
         if not feedback:
-            return "Observation: Performance is average. No specific critical errors detected. Try to tune weights."
+            return "Observation: Performance is average. No specific critical errors detected. Try to tune it to perform better."
             
         print("\nGenerated Feedback")
         print(feedback)
@@ -592,7 +610,8 @@ class EurekaSearch:
             epochs=final_train_epochs, 
             model_name=f"{self.pure_rl_baseline}_FINAL_BEST",
 
-            save_pkl_model=True  # NOW Save the final model
+            save_pkl_model=True,  # NOW Save the final model
+            track_stats=True  # Track detailed stats for final model
         )
 
         final_policy.batch_size = 2048  # 4096 for 8x8 / 2048 # for 5x5

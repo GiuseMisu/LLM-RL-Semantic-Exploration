@@ -73,7 +73,7 @@ class PPO(Policy):
         self.epochs = epochs
         self.batch_size = 128
         self.entropy_coeff = 0.02
-        self.steps = 10
+        self.steps = 10 # number of passes over the data per epoch (repley the data multiple times)
         
         #in eureka we don't want to save the model while finding the best reward function
         self.save_pkl_model = save_pkl_model  
@@ -194,27 +194,32 @@ class PPO(Policy):
             
             episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
             
-            # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
-            training_history.append(episode_reward[0])  # episode_reward is a list/array
+            # Unpack rewards: (avg_reward, avg_reward_aug, avg_env_reward)
+            # avg_reward: what rollout sees from env.step (may be augmented by wrapper)
+            # avg_env_reward: TRUE env reward (from info dict if wrapper used, else same as avg_reward)
+            avg_reward, avg_env_reward = episode_reward
+            
+            # Store TRUE env reward for eureka approach (for reflection prompt)
+            training_history.append(avg_env_reward)
         
             #[LOGGING]
             avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
 
-            if episode_reward[0] > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f} ==> New best reward, saving")
-                max_rew = episode_reward[0]
+            # Use avg_env_reward for model selection (true task performance)
+            if avg_env_reward > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f} ==> New best ENV REWARD, saving")
+                max_rew = avg_env_reward
                 if self.save_pkl_model:
                     self.save(
                         filename=f"{self.model_name}_{self.env_type}_best"
                     ) 
             else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f}")
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f}")
                 
-            #print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
-
+            
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(episode_reward)
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -232,7 +237,8 @@ class PPO(Policy):
             if self.track_stats:
                 # #[LOGGING] Log Metrics
                 tracker.log(e, {
-                    "Reward": episode_reward[0],
+                    "Env_Reward": avg_env_reward,      # TRUE env reward
+                    "Shaped_Reward": avg_reward,       # What agent optimizes
                     "Episode_Length": avg_ep_len,
                     "Policy_Loss": p_loss,
                     "Value_Loss": v_loss,
@@ -683,25 +689,30 @@ class RecurrentPPO(PPO):
                 sequence_length=self.sequence_length
             )
             
+            # Unpack rewards: (avg_reward, avg_env_reward)
+            avg_reward, avg_env_reward = episode_reward
+
             # Reset hidden for next rollout
             self._hidden = None
 
             # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
-            training_history.append(episode_reward)  # episode_reward is a list/array
+            training_history.append(avg_env_reward)  # episode_reward is a list/array
         
-            if episode_reward > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f} ==> New best reward, saving")
-                max_rew = episode_reward
+            # Use avg_env_reward for model selection (true task performance)
+            # do not use avg_reward bacause it may contains the reward from the wrapper (so the augmented reward)
+            if avg_env_reward > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f} ==> New best ENV REWARD, saving")
+                max_rew = avg_env_reward
                 if self.save_pkl_model:
                     self.save(
                         filename=f"{self.model_name}_{self.env_type}_best"
                     ) 
             else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f}")
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f}")
 
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(episode_reward)
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -727,12 +738,14 @@ class RecurrentPPO(PPO):
             if self.track_stats:
                 avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
                 tracker.log(e, {
-                    "Reward": episode_reward, # Note: Recurrent returns scalar, PPO returns tuple
+                    "Env_Reward": avg_env_reward,      # TRUE env reward
+                    "Shaped_Reward": avg_reward,       # What agent optimizes
                     "Episode_Length": avg_ep_len,
                     "Policy_Loss": p_loss,
                     "Value_Loss": v_loss,
                     "Entropy": ent
                 })
+                
         if self.track_stats:
             tracker.save()
             tracker.plot()
