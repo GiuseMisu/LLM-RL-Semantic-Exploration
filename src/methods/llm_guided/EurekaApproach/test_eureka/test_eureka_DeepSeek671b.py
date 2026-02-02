@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
-from src.methods.llm_guided.DeepSeek671b import DeepSeekCloud671b_Client
+from src.methods.llm_guided.llm_clients.DeepSeek671b import DeepSeekCloud671b_Client
 from src.methods.llm_guided.EurekaApproach.eureka_search import EurekaSearch
 from src.common.env_setup import make_minigrid_env
 from src.common.policy_evaluation import evaluate_policy

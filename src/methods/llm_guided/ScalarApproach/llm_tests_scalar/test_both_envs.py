@@ -2,12 +2,13 @@ import sys
 import os
 
 # Adjust path to find your src folder
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
 # CORRECT IMPORTS (Fixing the errors found in your main block)
-from src.methods.llm_guided.cached_llm import RobustCachedLLMClient
-from src.methods.llm_guided.phi3_5 import Phi35LLMClient
-from src.methods.llm_guided.llm_shared_utils import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
+from src.methods.llm_guided.ScalarApproach.cached_llm import RobustCachedLLMClient
+from src.methods.llm_guided.llm_clients.phi3_5 import Phi35LLMClient
+from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
+from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPTimport DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
 
 
 if __name__ == "__main__":
@@ -16,12 +17,20 @@ if __name__ == "__main__":
     print("===============================================")
 
     print("\n[SCENARIO A] Testing DoorKey Mode")
+
+    cache_dir = os.path.join(os.path.dirname(__file__), "../cache")
+    os.makedirs(cache_dir, exist_ok=True)
+
     try:
         # 1. Init Real Client with DoorKey Prompt
         dk_real = Phi35LLMClient(system_prompt=DOOR_KEY_SYSTEM_PROMPT)
         # 2. Wrap with Caching/Guardrails
-        dk_wrapper = RobustCachedLLMClient(dk_real, cache_path="test_DOORKEY_real.json", voting_samples=3, mode="DOORKEY")
-        
+        dk_wrapper = RobustCachedLLMClient(
+            dk_real, 
+            cache_path=os.path.join(cache_dir, "test_DOORKEY_real.json"), 
+            voting_samples=3, 
+            mode="DOORKEY"
+        )
         # Check Mode Detection
         print(f"   -> Detected Mode: {dk_wrapper.mode}")
         if dk_wrapper.mode != "DOORKEY":
@@ -42,8 +51,12 @@ if __name__ == "__main__":
         empty_real = Phi35LLMClient(system_prompt=EMPTY_SYSTEM_PROMPT)
         
         # 2. Wrap with Caching/Guardrails
-        empty_wrapper = RobustCachedLLMClient(empty_real, cache_path="test_EMPTY_real.json", voting_samples=3, mode="EMPTY")
-
+        empty_wrapper = RobustCachedLLMClient(
+            empty_real, 
+            cache_path=os.path.join(cache_dir, "test_EMPTY_real.json"), 
+            voting_samples=3, 
+            mode="EMPTY"
+        )
         # Check Mode Detection
         print(f"   -> Detected Mode: {empty_wrapper.mode}")
         if empty_wrapper.mode != "EMPTY":

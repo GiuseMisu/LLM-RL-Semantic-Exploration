@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
-from src.methods.llm_guided.Perplexity import PerplexityClient
+from src.methods.llm_guided.llm_clients.Perplexity import PerplexityClient
 from src.methods.llm_guided.EurekaApproach.eureka_search import EurekaSearch
 
 if __name__ == "__main__":

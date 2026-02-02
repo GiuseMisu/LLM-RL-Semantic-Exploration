@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 from minigrid.wrappers import ImgObsWrapper
 
 # LLM SCALAR-REWARD WRAPPER 
-from src.methods.llm_guided.llm_reward_wrapper import LLMRewardWrapper
+from src.methods.llm_guided.ScalarApproach.llm_reward_wrapper import LLMRewardWrapper
 
 # LLM EUREKA APPROACH WRAPPER
 from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     

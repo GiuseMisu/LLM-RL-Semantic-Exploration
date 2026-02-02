@@ -5,7 +5,7 @@ import ast
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-from src.methods.llm_guided.llm_shared_utils import BaseLLMClient
+from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
 
 class RobustCachedLLMClient(BaseLLMClient):
     """
@@ -318,8 +318,9 @@ if __name__ == "__main__":
     #=======================
     # PHI 3.5 TESTS
     #=======================
-    from src.methods.llm_guided.phi3_5 import Phi35LLMClient
-    from src.methods.llm_guided.llm_shared_utils import DOOR_KEY_SYSTEM_PROMPT
+    from src.methods.llm_guided.llm_clients.phi3_5 import Phi35LLMClient
+    from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
+    from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
 
     # 1. Initialize the Real Client
     try:        

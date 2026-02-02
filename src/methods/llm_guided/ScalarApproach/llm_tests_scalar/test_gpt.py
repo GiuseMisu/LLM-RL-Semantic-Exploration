@@ -2,16 +2,15 @@ import time
 import sys
 import os
 
-# find the sibling file 'phi3_5.py'
-sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-from DeepSeek671b import DeepSeekCloud671b_Client
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
+from src.methods.llm_guided.llm_clients.gpt_oss import GPT_OSS_Client
 
 if __name__ == "__main__":
     
     try:
         # Initialize the client
-        client = DeepSeekCloud671b_Client(
-            reasoning=False, 
+        client = GPT_OSS_Client(
+            reasoning=True, 
             temperature=0.3        
             )
         print(f"Model: {client.model_name}")

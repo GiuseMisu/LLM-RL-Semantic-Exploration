@@ -3,17 +3,18 @@ import sys
 import ollama
 
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-from src.methods.llm_guided.llm_shared_utils import BaseLLMClient, DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 
-class HermesLLMClient(BaseLLMClient):
-    def __init__(self, model_name="hermes3:8b", debug=False, system_prompt=DOOR_KEY_SYSTEM_PROMPT):     
+from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
+from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
+
+class DeepSeekLLMClient(BaseLLMClient):
+    def __init__(self, model_name="deepseek-r1:8b", system_prompt=DOOR_KEY_SYSTEM_PROMPT):     
         """
         Args:
             model_name (str): Name of the Ollama model tag (default: 'deepseek-r1')
-            debug (bool): Enable verbose logging
         """
-        super().__init__(debug=debug, system_prompt=system_prompt)
+        super().__init__(system_prompt=system_prompt)
         self.model_name = model_name
         
         #no api key needed cause run locally
@@ -51,15 +52,15 @@ class HermesLLMClient(BaseLLMClient):
             return ""
 
         except Exception as e:
-            if self.debug:
-                print(f"[Error] Could not connect to Ollama: {e}")
-                print("Make sure Ollama is running ('ollama serve') and the model is pulled")
-            return ""
+            raise ConnectionError(
+                            f"[DeepSeek_R1 Error] Could not connect to Ollama: {e}\n"
+                            "Make sure Ollama is running"
+                        )
 
 # Simple check if run directly
 if __name__ == "__main__":
     try:
-        client = HermesLLMClient(debug=True)
+        client = DeepSeekLLMClient()
         print(f"DeepSeek Client Initialized. Model: {client.model_name}")
     except Exception as e:
         print(e)
