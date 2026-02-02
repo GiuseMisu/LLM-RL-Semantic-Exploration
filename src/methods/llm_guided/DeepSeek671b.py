@@ -24,7 +24,10 @@ class DeepSeekCloud671b_Client(BaseLLMClient):
     def _get_raw_response(self, prompt: str, generate_explanation: bool) -> str:
         try:
             
-            llm_options = {'temperature': self.temperature}
+            llm_options = {
+                           'temperature': self.temperature,
+                            #'num_ctx': 1024 #4096 # 8192                       
+                          }
             
             messages = [
                 {'role': 'system', 'content': self.system_prompt}, 

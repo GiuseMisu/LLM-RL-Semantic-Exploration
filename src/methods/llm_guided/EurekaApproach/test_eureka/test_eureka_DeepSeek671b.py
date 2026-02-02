@@ -31,19 +31,19 @@ if __name__ == "__main__":
         env_id="MiniGrid-DoorKey-5x5-v0",
         llm_model=llm,
 
-        reflection_iterations=2, # numero di volte che provi a miglioreare la reward heuristic returned by llm
+        reflection_iterations=5, # numero di volte che provi a miglioreare la reward heuristic returned by llm
         
-        training_epochs=50,  # numb of epochs to train the model with each candidate reward function
-        train_max_steps= 300, # max steps per training episode
-        num_eval_episodes=20, # numb of episodes to evaluate each candidate reward function
+        training_epochs=70,  # numb of epochs to train the model with each candidate reward function
+        train_max_steps= 250, # max steps per training episode
+        num_eval_episodes=25, # numb of episodes to evaluate each candidate reward function
         pure_rl_baseline=baseline_rl
     )
 
     best_code = eureka.find_best_RwdFunc()
 
-    # eureka.train_final_model(
-    #     final_train_epochs=200,
-    #     final_train_max_steps=300,
-    #     reward_code_str=best_code
-    # )
+    eureka.train_final_model(
+        final_train_epochs=100,
+        final_train_max_steps=250,
+        reward_code_str=best_code
+    )
 

@@ -83,13 +83,15 @@ class EurekaRewardWrapper(gym.Wrapper):
         
         #print(f"Eureka Wrapper Reward: {intrinsic_reward} / Env Reward: {reward}")
         if reward != 0.0:
-            print(f"=> Env Solved: {reward}")
+            print(f"=> [Env Solved] EnvRwd: {reward} / LLMRwd: {intrinsic_reward} / TotalRwd: {(reward*5 + intrinsic_reward*5)}")
+            total_reward = (reward*5) + float(intrinsic_reward*5)
+            
+        else:
+            # i think is better to send to the pure rl alg ONLY THE INTRINSIC REWARD-> TO AVOID HAVING DIFFERNT SCALES
+            #total_reward = float(intrinsic_reward)
 
-        # i think is better to send to the pure rl alg ONLY THE INTRINSIC REWARD-> TO AVOID HAVING DIFFERNT SCALES
-        #total_reward = float(intrinsic_reward)
-
-        # send to the pure RL alg the INTRINSIC REWARD + env reward
-        total_reward = reward + float(intrinsic_reward)
+            # send to the pure RL alg the INTRINSIC REWARD + env reward
+            total_reward = reward + float(intrinsic_reward)
         
         return obs, total_reward, terminated, truncated, info
 

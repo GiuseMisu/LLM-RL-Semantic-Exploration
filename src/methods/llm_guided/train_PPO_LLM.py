@@ -69,7 +69,9 @@ def train_ppo_with_llm(
         elif llm_backend == 'deepseek':
             real_client = DeepSeekLLMClient(system_prompt=system_prompt)  
         elif llm_backend == 'deepseek671b':
-            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt)
+            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt, 
+                                                   reasoning=True,
+                                                   temperature=0.3)
         elif llm_backend == 'hermes':
             real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
         elif llm_backend == 'gemini':
@@ -95,7 +97,7 @@ def train_ppo_with_llm(
         textualizer_fn=textualizer_fn,
         llm_weight=llm_weight,
         verbose=verbose,
-        max_steps=max_steps #250
+        max_steps=max_steps 
     )
     env = env_fn()
     
@@ -145,8 +147,8 @@ if __name__ == "__main__":
         use_llm=True,
         llm_backend='deepseek671b', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=3,
-        max_steps=250,
+        epochs=2,
+        max_steps=650,
         verbose=True, 
         voting_samples=3
     )

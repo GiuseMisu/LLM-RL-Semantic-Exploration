@@ -9,7 +9,8 @@ ENVIRONMENT CONFIGURATION:
 ENVIRONMENT API DETAILS:
 The `env` object is the RAW MiniGrid environment with these attributes:
 
-1. `env.agent_pos`: tuple (x, y) where x=column, y=row. Origin (0,0) is top-left corner.
+1. `env.agent_pos`: is a TUPLE (x, y), NOT a NumPy array! DO NOT compare it directly with numpy arrays.
+    x, y = env.agent_pos here x=column, y=row. Origin (0,0) is top-left corner.
 
 2. `env.agent_dir`: int representing direction agent is facing
    - 0 = East (right)
@@ -27,7 +28,8 @@ The `env` object is the RAW MiniGrid environment with these attributes:
    - `env.grid.height`: Grid height (integer)
    
 5. Object attributes (when env.grid.get(x,y) returns an object):
-   - .type: One of ['wall', 'door', 'key', 'goal', 'lava']
+   Always check `if obj is not None` before accessing attributes!
+   - .type: One of ['wall', 'door', 'key', 'goal'] 
    - .is_open: bool (Only valid if type == 'door')
    - .is_locked: bool (Only valid if type == 'door')
    - .color: string ('red', 'green', 'blue', 'yellow', 'purple', 'grey')
@@ -53,6 +55,13 @@ REWARD DESIGN PRINCIPLES:
 - Handle edge cases: check for None before accessing object attributes
 - To prevent the agent from just standing still near the target to accumulate rewards, consider penalizing each time step slightly or using potential-based rewards (difference in distance between steps).
 
+MANDATORY ANTI-EXPLOITATION RULES:
+1. You MUST include a small negative reward per step (e.g., -0.01) to prevent the agent from standing still.
+WITHOUT this penalty, the agent WILL exploit distance-based rewards by standing near targets.
+2. Distance-based rewards should be SMALL, not large. 
+3. One-time bonuses for milestones (key pickup and door open) should be larger than distance rewards
+4. Final reward MUST be clamped: `return max(-0.1, min(1.0, reward))`
+
 DISTANCE CALCULATION HELPERS:
 - Manhattan distance: `abs(x1 - x2) + abs(y1 - y2)`
 - Normalize by grid size: `distance / (env.grid.width + env.grid.height)`
@@ -65,6 +74,8 @@ CRITICAL CONSTRAINTS and REQUIREMENTS:
 - Function signature MUST be exactly `def compute_reward(env):`
 - Available imports: Only `np` (numpy) and `math` are available
 - Safety: Always check if `env.grid.get(x, y)` returns None before accessing attributes
+- Do not use `env.step()` inside the reward function.
+- Always check `if obj is not None` before accessing `.type`.
 - It is forbidden to generate a function that returns values outside the range [-0.1, 1.0]
 - CRITICAL SAFETY: `env.grid.get(x, y)` returns `None` for empty tiles. YOU MUST check `if obj is not None:` before accessing `obj.type`.
 - Do not use `env.get_cell(...)` or other helper methods. Use only `env.grid.get(x,y)`.
