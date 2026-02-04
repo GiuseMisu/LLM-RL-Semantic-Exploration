@@ -4,7 +4,7 @@
 
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 
 import warnings
 # ---  SILENCE WARNINGS ---
@@ -13,23 +13,22 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
 warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
 
-import torch
 from src.common.env_setup import make_minigrid_env
 from src.methods.pure_rl.ppo.ppo_config import PPO
 
 # Import LLM components
-from src.methods.llm_guided.cached_llm import RobustCachedLLMClient
-from src.methods.llm_guided.llm_shared_utils import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
-from src.methods.llm_guided.DoorKey_Textualizer import get_DOORKEY_description
-from src.methods.llm_guided.Empty_Textualizer import get_EMPTY_description
+from src.methods.llm_guided.ScalarApproach.cached_llm import RobustCachedLLMClient
+
+from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
+from src.methods.llm_guided.ScalarApproach.DoorKey_Textualizer import get_DOORKEY_description
+from src.methods.llm_guided.ScalarApproach.Empty_Textualizer import get_EMPTY_description
 
 # Choose LLM Client 
-from src.methods.llm_guided.phi3_5 import Phi35LLMClient
-# from src.methods.llm_guided.gemini import GeminiLLMClient
-from src.methods.llm_guided.deepseek_r1 import DeepSeekLLMClient
-
-from src.methods.llm_guided.hermes3 import HermesLLMClient
-from src.methods.llm_guided.DeepSeek671b import DeepSeekCloud671b_Client
+from src.methods.llm_guided.llm_clients.phi3_5 import Phi35LLMClient
+from src.methods.llm_guided.llm_clients.gemini import GeminiLLMClient
+from src.methods.llm_guided.llm_clients.deepseek_r1 import DeepSeekLLMClient
+from src.methods.llm_guided.llm_clients.hermes3 import HermesLLMClient
+from src.methods.llm_guided.llm_clients.DeepSeek671b import DeepSeekCloud671b_Client
 
 
 
@@ -50,18 +49,27 @@ def train_ppo_with_llm(
     textualizer_fn = None
     
     if use_llm:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(current_dir, "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+
         if "DoorKey" in env_id:
             system_prompt = DOOR_KEY_SYSTEM_PROMPT
             textualizer_fn = get_DOORKEY_description
-            name_cache = "doorkey_"+llm_backend+"_cache.json"
-            cache_name = cache_name or name_cache
+            default_cache = "doorkey_"+llm_backend+"_cache.json"
         elif "Empty" in env_id:
             system_prompt = EMPTY_SYSTEM_PROMPT
             textualizer_fn = get_EMPTY_description
-            name_cache = "empty_"+llm_backend+"_cache.json"
-            cache_name = cache_name or name_cache
+            default_cache = "empty_"+llm_backend+"_cache.json"
         else:
             raise ValueError(f"Unknown environment: {env_id}")
+        
+        # Build full cache path
+        target_filename = cache_name or default_cache
+        if not os.path.isabs(target_filename):
+            cache_name = os.path.join(cache_dir, target_filename)
+        else:
+            cache_name = target_filename
         
         # Initialize LLM
         if llm_backend == 'phi':
@@ -69,11 +77,13 @@ def train_ppo_with_llm(
         elif llm_backend == 'deepseek':
             real_client = DeepSeekLLMClient(system_prompt=system_prompt)  
         elif llm_backend == 'deepseek671b':
-            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt)
+            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt, 
+                                                   reasoning=True,
+                                                   temperature=0.3)
         elif llm_backend == 'hermes':
             real_client = HermesLLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
-            from src.methods.llm_guided.gemini import GeminiLLMClient
+            from src.methods.llm_guided.llm_clients.gemini import GeminiLLMClient
             real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
@@ -95,7 +105,7 @@ def train_ppo_with_llm(
         textualizer_fn=textualizer_fn,
         llm_weight=llm_weight,
         verbose=verbose,
-        max_steps=max_steps #250
+        max_steps=max_steps 
     )
     env = env_fn()
     
@@ -147,7 +157,7 @@ if __name__ == "__main__":
     
     # # === EXPERIMENT 2: LLM-Guided (Additive Rewards) ===
     policy_llm, env_llm = train_ppo_with_llm(
-        env_id="MiniGrid-DoorKey-8x8-v0",
+        env_id="MiniGrid-DoorKey-5x5-v0",
         use_llm=True,
         llm_backend='hermes', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 

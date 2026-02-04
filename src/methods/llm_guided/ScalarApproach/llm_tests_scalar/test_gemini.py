@@ -4,8 +4,8 @@ import os
 
 # Adjust path to find the sibling file 'gemini.py'
 # Assumes this file is in src/methods/llm_guided/llm_tests/
-sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-from gemini import GeminiLLMClient
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
+from src.methods.llm_guided.llm_clients.gemini import GeminiLLMClient
 
 if __name__ == "__main__":
     

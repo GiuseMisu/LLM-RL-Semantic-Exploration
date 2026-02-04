@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
-from src.methods.llm_guided.Perplexity import PerplexityClient
+from src.methods.llm_guided.llm_clients.Perplexity import PerplexityClient
 from src.methods.llm_guided.EurekaApproach.eureka_search import EurekaSearch
 
 if __name__ == "__main__":
@@ -18,9 +18,8 @@ if __name__ == "__main__":
         # Initialize the client
         llm = PerplexityClient(
             model_name="sonar-reasoning-pro",
-            temperature=0.6
+            temperature=0.1 # troppo alta smette di seguire le istruzioni
         )
-        print(f"Model: {llm.model_name}")
     except Exception as e:
         print(f"Setup Failed: {e}")
         sys.exit(1)
@@ -33,7 +32,7 @@ if __name__ == "__main__":
 
         reflection_iterations=3, # numero di volte che provi a miglioreare la reward heuristic returned by llm
         
-        training_epochs=50,  # numb of epochs to train the model with each candidate reward function
+        training_epochs=50,      # numb of epochs to train the model with each candidate reward function
         train_max_steps= 300, # max steps per training episode
         num_eval_episodes=20, # numb of episodes to evaluate each candidate reward function
         pure_rl_baseline=baseline_rl

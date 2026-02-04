@@ -12,8 +12,9 @@ import numpy as np
 from src.methods.pure_rl.utils.network import BaseNet, MiniGridCNN
 from src.methods.pure_rl.utils.policy import Policy
 from src.methods.pure_rl.utils.rollout import Rollout
+from src.common.metrics import MetricsTracker
 
-import math
+import re
 
 """
 Policy Gradient for PPO
@@ -29,10 +30,32 @@ class PPO(Policy):
             output_dim : int | None = None, 
             encode_dim : int = 128,          
             model_name : str = "PPO",
-            save_pkl_model: bool = True  # di default salva il modello migliore  
+            save_pkl_model: bool = True,  # di default salva il modello migliore  
+            track_stats: bool = True
             ):
 
         super().__init__(env=env, gamma=gamma, epsilon=epsilon, model_name=model_name)
+
+        #================Extract Env Type and Model Name For File Name================
+        self.env_type = "unknown"
+        if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
+            env_id = env.unwrapped.spec.id
+            size_match = re.search(r'(\d+)x(\d+)', env_id)
+            if size_match:
+                env_dimension = size_match.group(1) + 'x' + size_match.group(2)
+                if "empty" in env_id.lower() or "minigrid-empty" in env_id.lower() :
+                    self.env_type = "EMPTY_" + env_dimension
+                elif "door" in env_id.lower()  and "key" in env_id.lower()  or "doorkey" in env_id.lower() :
+                    self.env_type = "DOORKEY_" + env_dimension
+                else:
+                    print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
+                    self.env_type = "OTHER_" + env_dimension
+            else:
+                print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")
+        
+        self.model_name = model_name
+        #==============================================================================
+        
 
         # detect action space if missing
         if output_dim is None:
@@ -50,16 +73,16 @@ class PPO(Policy):
         self.epochs = epochs
         self.batch_size = 128
         self.entropy_coeff = 0.02
-        self.steps = 10
-        # ...
-
+        self.steps = 10 # number of passes over the data per epoch (repley the data multiple times)
+        
         #in eureka we don't want to save the model while finding the best reward function
-        self.save_pkl_model = save_pkl_model 
+        self.save_pkl_model = save_pkl_model  
+
+        self.track_stats = track_stats # be able to choose to track stats or not, default=True
 
         self.optimizer = Adam(self.parameters(), lr = self.lr)
 
         self.rollout = Rollout(self.env, self)
-        print(f"[{self.name}]")
 
     def forward(self, state : torch.Tensor) -> tuple:
         """
@@ -119,6 +142,12 @@ class PPO(Policy):
             batch_size=self.batch_size, shuffle=True # shuffle=True seems to work better
         )
 
+        #[LOGGING] logging metrics
+        total_policy_loss = 0 # to see the magnitude of the updates
+        total_value_loss = 0  # how well the agent predicts future rewards, High spikes=instability
+        total_entropy = 0
+        count = 0
+
         for _ in range(self.steps):
             for batch in dataset:
                 batch_states, batch_actions, old_probs, adv, ret = batch
@@ -140,6 +169,14 @@ class PPO(Policy):
                 (policy_loss + value_loss).backward()
                 self.optimizer.step()
 
+                # Accumulate stats
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+                total_entropy += entropy.mean().item()
+                count += 1
+
+        return total_policy_loss/count, total_value_loss/count, total_entropy/count   #added for logging stats
+
     def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
         """
         Training loop for PPO
@@ -148,26 +185,41 @@ class PPO(Policy):
         consecutive_epochs_mean_reward = []
         training_history = [] #Store all episode rewards
     
+        # Initialize Tracker if tracking is enabled
+        if self.track_stats:
+            log_name = self.model_name + "_" + self.env_type
+            tracker = MetricsTracker(run_name=log_name, log_dir="logs")
+    
         for e in range(self.epochs):
             
-            episode_reward, states, actions, log_probs, advantages, returns, _ = self.rollout.forward_pass()
+            episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
             
-            # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
-            training_history.append(episode_reward[0])  # episode_reward is a list/array
+            # Unpack rewards: (avg_reward, avg_reward_aug, avg_env_reward)
+            # avg_reward: what rollout sees from env.step (may be augmented by wrapper)
+            # avg_env_reward: TRUE env reward (from info dict if wrapper used, else same as avg_reward)
+            avg_reward, avg_env_reward = episode_reward
+            
+            # Store TRUE env reward for eureka approach (for reflection prompt)
+            training_history.append(avg_env_reward)
         
-            if episode_reward[0] > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f} ==> New best reward, saving")
-                max_rew = episode_reward[0]
-                if self.save_pkl_model:
-                    self.save() 
-            else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward per Episode: {episode_reward[0]:.5f}")
-                
-            #print(f"Epoch {e+1}/{self.epochs} | Average Augmented Reward per Episode: {episode_reward[1]:.5f}")
+            #[LOGGING]
+            avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
 
+            # Use avg_env_reward for model selection (true task performance)
+            if avg_env_reward > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f} ==> New best ENV REWARD, saving")
+                max_rew = avg_env_reward
+                if self.save_pkl_model:
+                    self.save(
+                        filename=f"{self.model_name}_{self.env_type}_best"
+                    ) 
+            else:
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f}")
+                
+            
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(episode_reward)
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -180,7 +232,23 @@ class PPO(Policy):
                         ## Don't save again - best model already saved self.save()  
                         break
 
-            self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device))
+            p_loss, v_loss, ent = self.step(states.to(self.device), actions.to(self.device), log_probs.to(self.device), advantages.to(self.device), returns.to(self.device))
+
+            if self.track_stats:
+                # #[LOGGING] Log Metrics
+                tracker.log(e, {
+                    "Env_Reward": avg_env_reward,      # TRUE env reward
+                    "Shaped_Reward": avg_reward,       # What agent optimizes
+                    "Episode_Length": avg_ep_len,
+                    "Policy_Loss": p_loss,
+                    "Value_Loss": v_loss,
+                    "Entropy": ent
+                })
+
+        if self.track_stats:
+            # Save and Plot at the end
+            tracker.save()
+            tracker.plot()
 
         return training_history   # added for eureka approach
     
@@ -237,7 +305,8 @@ class RecurrentPPO(PPO):
             sequence_length: int = 16,  # TBPTT sequence length
             recurrence: str = "lstm",
             model_name: str = "RecurrentPPO",  #with ppo recurrent save also the type of recurrence
-            save_pkl_model: bool = True # di default salva il modello migliore
+            save_pkl_model: bool = True,  # di default salva il modello migliore
+            track_stats: bool = True
             ):
         
         # Call PPO init but we'll override some components
@@ -251,6 +320,24 @@ class RecurrentPPO(PPO):
             model_name=model_name + "_" + recurrence
         )
 
+        #======================Extract Env Type For File Name=========================
+        self.env_type = "unknown"
+        if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
+            env_id = env.unwrapped.spec.id
+            size_match = re.search(r'(\d+)x(\d+)', env_id)
+            if size_match:
+                env_dimension = size_match.group(1) + 'x' + size_match.group(2)
+                if "empty" in env_id.lower() or "minigrid-empty" in env_id.lower() :
+                    self.env_type = "EMPTY_" + env_dimension
+                elif "door" in env_id.lower()  and "key" in env_id.lower()  or "doorkey" in env_id.lower() :
+                    self.env_type = "DOORKEY_" + env_dimension
+                else:
+                    print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
+                    self.env_type = "OTHER_" + env_dimension
+            else:
+                print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")        
+        #===========================================================================
+
         if output_dim is None: # detect action space if missing
             output_dim = int(env.action_space.n)
         
@@ -263,6 +350,8 @@ class RecurrentPPO(PPO):
 
         #in eureka we don't want to save the model while finding the best reward function
         self.save_pkl_model = save_pkl_model 
+
+        self.track_stats = track_stats # be able to choose to track stats or not, default=True
         
         # Recurrent layer
         if self.recurrence == "lstm":
@@ -467,6 +556,12 @@ class RecurrentPPO(PPO):
         # Create indices for shuffling sequences (not timesteps within sequences!)
         indices = np.arange(num_sequences)
         
+        # [LOGGING] 
+        total_policy_loss = 0
+        total_value_loss = 0
+        total_entropy = 0
+        count = 0
+
         for _ in range(self.steps):
             # Shuffle sequence order each iteration
             np.random.shuffle(indices)
@@ -559,11 +654,21 @@ class RecurrentPPO(PPO):
                 # Their losses have different magnitudes and scales: Policy loss (surrogate loss) is typically small, Value loss can be larger
                 # 0.5 Prevents value function from dominating / The original PPO paper use 0.5
                 (policy_loss + 0.5 * value_loss).backward()
-
                 # Gradient clipping (important for RNNs)
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
-                
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)                
                 self.optimizer.step()
+
+                # Accumulate stats
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+                # Entropy is masked, calculate mean of valid elements
+                valid_entropy = (entropy * batch_mask).sum() / batch_mask.sum()
+                total_entropy += valid_entropy.item()
+                count += 1
+                
+        return total_policy_loss/count, total_value_loss/count, total_entropy/count
+
+
 
     def trainer(self, early_stopping_threshold: float = 0.95, window_size: int = 10):
         """Training loop for Recurrent PPO"""
@@ -571,6 +676,9 @@ class RecurrentPPO(PPO):
         consecutive_epochs_mean_reward = []
         training_history = [] #Store all episode rewards
     
+        if self.track_stats:
+            log_name = self.model_name + "_" + self.env_type
+            tracker = MetricsTracker(run_name=log_name, log_dir="logs")
 
         for e in range(self.epochs):
             # specialized rollout that captures hidden states it collects: 
@@ -581,23 +689,30 @@ class RecurrentPPO(PPO):
                 sequence_length=self.sequence_length
             )
             
+            # Unpack rewards: (avg_reward, avg_env_reward)
+            avg_reward, avg_env_reward = episode_reward
+
             # Reset hidden for next rollout
             self._hidden = None
 
             # Store the reward for this epoch, implemented for eureka approach (for reflection prompt)
-            training_history.append(episode_reward)  # episode_reward is a list/array
+            training_history.append(avg_env_reward)  # episode_reward is a list/array
         
-            if episode_reward > max_rew:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f} ==> New best reward, saving")
-                max_rew = episode_reward
+            # Use avg_env_reward for model selection (true task performance)
+            # do not use avg_reward bacause it may contains the reward from the wrapper (so the augmented reward)
+            if avg_env_reward > max_rew:
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f} ==> New best ENV REWARD, saving")
+                max_rew = avg_env_reward
                 if self.save_pkl_model:
-                    self.save() 
+                    self.save(
+                        filename=f"{self.model_name}_{self.env_type}_best"
+                    ) 
             else:
-                print(f"Epoch {e+1}/{self.epochs} | Average Reward: {episode_reward:.5f}")
+                print(f"Epoch {e+1}/{self.epochs} | Env Reward: {avg_env_reward:.5f} | Shaped Reward: {avg_reward:.5f}")
 
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(episode_reward)
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -609,7 +724,7 @@ class RecurrentPPO(PPO):
                         break
 
             # Training step
-            self.step(
+            p_loss, v_loss, ent = self.step(
                 states.to(self.device), 
                 actions.to(self.device), 
                 log_probs.to(self.device), 
@@ -619,5 +734,20 @@ class RecurrentPPO(PPO):
                 hidden_states,
                 episode_ends
             )
-            
+
+            if self.track_stats:
+                avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
+                tracker.log(e, {
+                    "Env_Reward": avg_env_reward,      # TRUE env reward
+                    "Shaped_Reward": avg_reward,       # What agent optimizes
+                    "Episode_Length": avg_ep_len,
+                    "Policy_Loss": p_loss,
+                    "Value_Loss": v_loss,
+                    "Entropy": ent
+                })
+                
+        if self.track_stats:
+            tracker.save()
+            tracker.plot()
+
         return training_history   # added for eureka approach

@@ -3,8 +3,8 @@ import sys
 import os
 
 # find the sibling file 'phi3_5.py'
-sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-from hermes3 import HermesLLMClient
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
+from src.methods.llm_guided.llm_clients.hermes3 import HermesLLMClient
 
 if __name__ == "__main__":
     

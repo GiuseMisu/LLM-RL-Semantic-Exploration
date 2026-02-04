@@ -74,11 +74,12 @@ class Rollout():
 
     def forward_pass(self):
         states, actions, log_probs, values, rewards, done = [], [], [], [], [], False
-        total_reward = total_reward_aug = episode_reward = avg_reward = 0.
+
+        total_reward = 0.
+        total_env_reward = 0.
+        episode_reward = 0.
         ep_len = 0
         state, _ = self.env.reset()
-
-        # agent.train() # TODO: Y train before Rollout?
 
         i = 0
         indexes, eps_sizes = [], []
@@ -98,19 +99,19 @@ class Rollout():
             # Store log probability of the selected action.
             log_probs.append(dist.log_prob(action))
                                     
-            state, reward, terminated, truncated, _ = self.env.step(action.item())
+            # [IMPPP] the reward here is the SHAPED reward from the environment
+            # (i.e., may include intrinsic rewards if the env is wrapped accordingly)
+            state, reward, terminated, truncated, info = self.env.step(action.item())
             
+            # Extract TRUE env reward: use info['env_reward'] if wrapper provides it, else use reward
+            # This handles both wrapped (LLM/Eureka) and unwrapped (pure RL) cases
+            true_env_reward = info.get('env_reward', reward) if isinstance(info, dict) else reward
+            total_env_reward += float(true_env_reward)
+
+            # Track shaped reward (what agent optimizes)
             episode_reward += float(reward)
             total_reward += float(reward)
-            avg_reward = total_reward/(len(indexes)+1)
-            
-            # Pass next_state (state after env.step) 
-            # for intrinsic reward computation (used by RND) so PPO and RecurrentRNNPPO does not use it
-            # because they did not have the override of augment_reward 
-            reward = self.agent.augment_reward(float(reward), next_state=state)
-            total_reward_aug += float(reward)
-            avg_reward_aug = total_reward_aug/(len(indexes)+1)
-
+                                    
             done = terminated or truncated
            
             if done:
@@ -150,7 +151,12 @@ class Rollout():
         returns = self.calculate_returns(rewards, indexes)
         advantages = self.calculate_advantages(returns, values)
 
-        return (avg_reward, avg_reward_aug), states, actions, log_probs, advantages, returns, eps_sizes
+        # Calculate average rewards per episode
+        num_episodes = max(len(indexes) + 1, 1)
+        avg_reward = total_reward / num_episodes
+        avg_env_reward = total_env_reward / num_episodes
+
+        return (avg_reward, avg_env_reward), states, actions, log_probs, advantages, returns, eps_sizes
     
 
     def forward_pass_recurrent(self, init_hidden_fn, sequence_length: int = 16):
@@ -180,7 +186,9 @@ class Rollout():
         states, actions, log_probs, values, rewards = [], [], [], [], []
         hidden_states = []  # Store hidden state at start of each chunk
         
-        total_reward = episode_reward = 0.
+        total_reward = 0.
+        total_env_reward = 0. 
+        episode_reward = 0.
         num_episodes = 0
         state, _ = self.env.reset()
         
@@ -225,14 +233,17 @@ class Rollout():
             if value_pred.dim() == 0:
                 value_pred = value_pred.unsqueeze(0)  # scalar -> (1,)
                                     
-            state, reward, terminated, truncated, _ = self.env.step(action.item())
+            # [IMPPP] the reward here is the SHAPED reward from the environment
+            # (i.e., may include intrinsic rewards if the env is wrapped accordingly)
+            state, reward, terminated, truncated, info = self.env.step(action.item())
             
+            # Extract TRUE env reward: use info['env_reward'] if wrapper provides it, else use reward
+            # This handles both wrapped (LLM/Eureka) and unwrapped (pure RL) cases
+            true_env_reward = info.get('env_reward', reward) if isinstance(info, dict) else reward
+            total_env_reward += float(true_env_reward)
+
             episode_reward += float(reward)
             
-            # Pass next_state (state after env.step) 
-            # for intrinsic reward computation (used by RND) so PPO and RecurrentRNNPPO does not use it
-            # because they did not have the override of augment_reward 
-            reward = self.agent.augment_reward(float(reward), next_state=state)
             done = terminated or truncated
            
             if done:
@@ -263,8 +274,10 @@ class Rollout():
         if ep_len > 0:
             eps_sizes.append(ep_len)
         
-        # Calculate average reward
-        avg_reward = total_reward / max(num_episodes, 1)
+        # Calculate average rewards per episode
+        num_episodes = max(num_episodes, 1)
+        avg_reward = total_reward / num_episodes
+        avg_env_reward = total_env_reward / num_episodes
         
         # Convert to tensors
         states = torch.cat(states)  # (total_steps, 7, 7, 3)
@@ -280,5 +293,6 @@ class Rollout():
         returns = self.calculate_returns(rewards, indexes)
         advantages = self.calculate_advantages(returns, values)
 
-        return (avg_reward, states, actions, log_probs, advantages, returns, 
+        # Return tuple with (avg_reward, avg_env_reward) for consistency with forward_passNotRecurrent()
+        return ((avg_reward, avg_env_reward), states, actions, log_probs, advantages, returns, 
                 eps_sizes, hidden_states, indexes)

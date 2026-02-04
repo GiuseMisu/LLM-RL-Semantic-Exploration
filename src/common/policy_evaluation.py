@@ -2,6 +2,7 @@ from src.common.visualization import save_frames_as_gif
 
 import torch
 from torch.nn import functional as F
+import re
 
 def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_interval=100):
     """
@@ -12,6 +13,24 @@ def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_i
     Returns:
         Dict with evaluation statistics
     """
+
+    env_type = "unknown"
+    if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
+        env_id = env.unwrapped.spec.id
+        size_match = re.search(r'(\d+)x(\d+)', env_id)
+        if size_match:
+            env_dimension = size_match.group(1) + 'x' + size_match.group(2)
+            if "empty" in env_id.lower() or "minigrid-empty" in env_id.lower() :
+                env_type = "EMPTY_" + env_dimension
+            elif "door" in env_id.lower()  and "key" in env_id.lower()  or "doorkey" in env_id.lower() :
+                env_type = "DOORKEY_" + env_dimension
+            else:
+                print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
+                env_type = "OTHER_" + env_dimension
+        else:
+            print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")
+        
+
     episode_rewards = []
     episode_lengths = []
     all_frames = []  # Collect frames from all episodes
@@ -61,7 +80,7 @@ def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_i
 
     # Save GIF with all episodes
     if save_gif and all_frames:
-        save_frames_as_gif(all_frames, filename=policy.name + "_eval.gif", 
+        save_frames_as_gif(all_frames, filename=policy.name + env_type + "_eval.gif", 
                           fps=gif_fps, interval=gif_interval, episode_info=episode_info)
         
     return stats

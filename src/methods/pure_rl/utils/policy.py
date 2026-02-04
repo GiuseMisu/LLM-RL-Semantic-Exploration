@@ -25,10 +25,16 @@ class Policy(nn.Module):
         self.name = model_name
         self.model_path = f"./{model_name}.pkl"
 
-    def save(self):
+    def save(self, filename: str | None = None):
         self.to("cpu")
-        print(f"[SAVE] Saving model to {self.model_path}")
+        if filename is not None:
+            if not filename.endswith(".pkl"):
+                self.model_path = f"./{filename}.pkl" 
+            else:
+                self.model_path = f"./{filename}"          
+              
         torch.save(self.state_dict(), self.model_path)
+        #print(f"[SAVE] Saving model to {self.model_path}")
         self.to(self.device)
 
     def load(self):

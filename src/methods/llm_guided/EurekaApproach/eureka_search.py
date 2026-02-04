@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata
 import re
 import numpy as np
 import torch
+import traceback
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
@@ -46,7 +47,7 @@ class EurekaSearch:
 
         # the LLM client is based on the standard implementation defined in the relative file
         # currently interaction with LLM is purely STATELESS (i.e. no conversation memory)
-        #keep a chat history, the LLM will see N different versions of compute_reward often mixes them up
+        # keep a chat history, the LLM will see N different versions of compute_reward often mixes them up
         # we do manually formatting the prompt with {previous_code} and {feedback}, this ensures LLM pays attention to the exact thing we want it to fix, rather than getting lost in a long conversation log.
         # PROOF:
         # this approach is confirmed byt the eureka paper that talks about Evolutionary Algorithm, not a Conversational Agent
@@ -76,13 +77,18 @@ class EurekaSearch:
         else:
             #[debug] print the function generated
             #print(f"LLM Output:\n{llm_output}\n{'-'*40}")
-            code_match = re.search(r"```python(.*?)```", llm_output, re.DOTALL)
+            # old code_match = re.search(r"```python(.*?)```", llm_output, re.DOTALL)
+            code_match = re.search(r"```[Pp]ython\s*(.*?)```", llm_output, re.DOTALL)
             if code_match:
                 print("the code had the python tags")
                 return code_match.group(1).strip()
-            if "def compute_reward" in llm_output:
-                print("the code had no python tags but contains 'def compute_reward'")
-                return llm_output
+            else:
+                if "def compute_reward" in llm_output:
+                    print("the code had no python tags but contains 'def compute_reward'")
+                    return llm_output
+                else:
+                    print("[EUREKA-SEARCH ERROR] No valid code block found in LLM output-> retunding empty string")
+                    return ""
         
     #=====================================================
     #       EVALUATE HEURISTIC PYTHON FUNCTION V2
@@ -95,7 +101,9 @@ class EurekaSearch:
         - Evaluation metrics (success rate, key pickup, door opening)
             -> more robust agent freezed from learning and tested on multiple different episodes
         """       
-
+        train_reward_delta = 0.0  # Initialize early to avoid UnboundLocalError in exception handler
+        env = None  # Initialize for finally block
+        
         try:
             # Setup environment with Eureka reward
             env = make_minigrid_env(
@@ -113,10 +121,14 @@ class EurekaSearch:
                 epochs=self.training_epochs,  # SHORT TRAINING just to see slope
                 model_name=self.pure_rl_baseline,
 
-                save_pkl_model=False  # Do not save model during Eureka evaluations
+                save_pkl_model=False,  # Do not save model during Eureka evaluations
+                track_stats=False  # Do not track detailed stats to save time
             )
+
+            policy.batch_size = 1024 #2048  # 4096 for 8x8 / 2048 # for 5x5
+            # rollout buffer size to match or exceed the batch size
+            policy.rollout.iterations = 2048 #4096  # for 8x8 16384 / # for 5x5 4096
             
-            train_reward_delta = 0.0
             print("\n====[TRAINING WITH LLM_REWARD_FUNCTION]====\n")
             try:
                 training_history = policy.trainer(
@@ -136,10 +148,9 @@ class EurekaSearch:
                     train_reward_delta = 0.0
 
             except Exception as train_err:
-                print(f"[Eureka] Training failed with error: {train_err}")
-                import traceback
+                print(f"[Eureka] Training failed with error: {train_err}")                
                 traceback.print_exc()
-                raise  # Re-raise to be caught by outer try-except
+                raise  # Re-raise to be caught by outer try-except 
       
             # ====================
             # EVALUATION METRICS
@@ -169,31 +180,40 @@ class EurekaSearch:
                     # obs, reward, terminated, truncated, info = env.step(action)
 
                     # Robustly get device, convert numpy obs -> tensor, add batch dim
-                    device = getattr(policy, "device", next(policy.parameters()).device)
-                    state = torch.from_numpy(obs).float().unsqueeze(0).to(device)
-                    # Policy output (could be logits, action tensor, or (action, value))
-                    policy_out = policy.get_act(state)
+                    # device = getattr(policy, "device", next(policy.parameters()).device)
+                    # state = torch.from_numpy(obs).float().unsqueeze(0).to(device)
+                    # # Policy output (could be logits, action tensor, or (action, value))
+                    # policy_out = policy.get_act(state)
 
-                    # Normalize to single tensor that represents action/logits
-                    if isinstance(policy_out, tuple):
-                        out_tensor = policy_out[0]
-                    else:
-                        out_tensor = policy_out
+                    # # Normalize to single tensor that represents action/logits
+                    # if isinstance(policy_out, tuple):
+                    #     out_tensor = policy_out[0]
+                    # else:
+                    #     out_tensor = policy_out
 
-                    # If output logits/probs (last dim > 1) -> argmax, else treat as action index
-                    if isinstance(out_tensor, torch.Tensor):
-                        # If shape is [Batch, Actions] (e.g., [1, 7]), it's logits -> use argmax
-                        if out_tensor.dim() >= 2 and out_tensor.shape[-1] > 1:
-                            action_tensor = torch.argmax(out_tensor, dim=-1)
-                        else:
-                            # It's already an index
-                            action_tensor = out_tensor.squeeze()
+                    # # If output logits/probs (last dim > 1) -> argmax, else treat as action index
+                    # if isinstance(out_tensor, torch.Tensor):
+                    #     # If shape is [Batch, Actions] (e.g., [1, 7]), it's logits -> use argmax
+                    #     if out_tensor.dim() >= 2 and out_tensor.shape[-1] > 1:
+                    #         action_tensor = torch.argmax(out_tensor, dim=-1)
+                    #     else:
+                    #         # It's already an index
+                    #         action_tensor = out_tensor.squeeze()
                         
-                        arr = action_tensor.detach().cpu().numpy().reshape(-1) # Safe conversion to python int
-                        action = int(arr[0])
-                    else:
-                        # Fallback if policy returns a raw int/float
-                        action = int(out_tensor)
+                    #     arr = action_tensor.detach().cpu().numpy().reshape(-1) # Safe conversion to python int
+                    #     action = int(arr[0])
+                    # else:
+                    #     # Fallback if policy returns a raw int/float
+                    #     action = int(out_tensor)
+
+                    state_tensor = torch.FloatTensor(obs).unsqueeze(0).to(policy.device)
+                    with torch.no_grad():
+                        action_logits, _ = policy.get_act(state_tensor)
+                        action_prob = torch.nn.functional.softmax(action_logits, dim=-1)
+                        dist = torch.distributions.Categorical(action_prob)
+                        
+                        # Use SAMPLING (same as training) - greedy fails on stochastic policies
+                        action = dist.sample().item()
 
                     # Step
                     obs, reward, terminated, truncated, info = env.step(action)
@@ -244,10 +264,12 @@ class EurekaSearch:
             # =====================================================================
             # Weight different aspects of learning
             fitness_score = (
-                success_rate * 100 +           # Most important is the goal reached
-                key_pickup_rate * 20 +         # Partial credit for subtasks
-                door_open_rate * 50 +
-                (1.0 / (mean_steps_to_success + 1)) * 10  # Efficiency bonus
+                success_rate * 200 +           # Most important is the goal reached
+                key_pickup_rate * 30 +         # Partial credit for subtasks
+                door_open_rate * 70 +
+                max(0, mean_reward) * 50 +
+                (1.0 / (mean_steps_to_success + 1)) * 10 +  # Efficiency bonus
+                train_reward_delta * 30           # Was training improving?
             )
             
             return {
@@ -260,13 +282,8 @@ class EurekaSearch:
                 'train_reward_delta': train_reward_delta
             }, None  # No error
             
-        except Exception as e:
-            print(f"\n\n[Eureka Search Error] Evaluation failed with exception:")
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {e}")
-            import traceback
-            print("\nFull traceback:")
-            traceback.print_exc()
+        except Exception as e:            
+            full_error_trace = traceback.format_exc()            
             
             return {
                 'fitness_score': -float('inf'),
@@ -276,7 +293,12 @@ class EurekaSearch:
                 'mean_reward': -float('inf'),
                 'mean_steps': float('inf'),                
                 'train_reward_delta': train_reward_delta
-            }, str(e)
+            }, full_error_trace
+        
+        finally:
+            # Clean up environment to prevent memory leaks
+            if env is not None:
+                env.close()
 
     
     def _analyze_general_trend(self, delta, success_rate, mean_reward):
@@ -314,8 +336,25 @@ class EurekaSearch:
              )
 
         # 4. REAL PROGRESS
-        if delta > 0.1 and success_rate > 0.0:
-            return f"PROMISING: Valid Learning Detected. Reward is increasing (+{delta:.2f}) and Success Rate is non-zero ({success_rate:.2f})."
+        if delta > 0.1 and success_rate > 0.0 and success_rate < 0.5:
+            return (
+            f"PROMISING: Valid Learning Detected. During training the reward is increasing (+{delta:.2f}) "
+            f"But success rate ({success_rate:.2f}) is still below 0.5. "
+            "Performance is still modest and can improve significantly — the agent is doing barely well (he solves the env less than half of the time) it can do way better. "
+            "DIAGNOSIS: The reward signal enables learning but is not yet strong or aligned enough to reach high reliability. "
+            "FIX: Increase positive incentives add or boost one-time bonuses for key subgoals, "
+            "and reduce any exploitable shaping so the agent is pushed toward higher success and efficiency."
+            )
+
+        # 5. big increse modify slightly the reward function
+        if delta > 0.5 and success_rate >= 0.5:
+            return (
+            f"GOOD PROGRESS: Strong Learning Detected. During training the reward is increasing significantly (+{delta:.2f}) "
+            f"And success rate ({success_rate:.2f}) is already above 0.5. "
+            "DIAGNOSIS: The reward signal is effective and well-aligned, enabling the agent to learn quickly and achieve moderate success. "
+            "FIX: Consider fine-tuning the reward function to further enhance performance, "
+            "such as optimizing incentives for efficiency or refining sub-goal rewards to push success rates even higher."
+            )          
 
         return ""
 
@@ -323,6 +362,13 @@ class EurekaSearch:
         """Generate stage-specific diagnostic feedback"""
         feedback = []
         
+        if metrics['mean_reward'] > 30 and metrics['key_pickup_rate'] < 0.3:
+            feedback.append(
+                "REWARD EXPLOITATION: High rewards but low key pickup. "
+                "Your distance reward is being exploited (e.g. agent stands near key without picking it up). "
+                "REQUIRED FIX: (1) YOU MUST ADD a small step penalty, (2) Reduce distance reward magnitude."
+            )
+
         # --- 1. General Diagnosis over Train and Eval
         trend_msg = self._analyze_general_trend(
             metrics.get('train_reward_delta', 0.0), 
@@ -333,7 +379,7 @@ class EurekaSearch:
             feedback.append(trend_msg)
             # If it's reward hacking emphasize it heavily
             if "MISALIGNED" in trend_msg:
-                feedback.append("--- IMMEDIATE FIX REQUIRED ---")
+                feedback.append("IMMEDIATE FIX REQUIRED: ")
                 feedback.append("Do not focus on specific stages below until the Misalignment is fixed.")
         
         # --- 2. Stage-Specific Analysis ---        
@@ -374,7 +420,7 @@ class EurekaSearch:
 
         # Final Formatting
         if not feedback:
-            return "Observation: Performance is average. No specific critical errors detected. Try to tune weights."
+            return "Observation: Performance is average. No specific critical errors detected. Try to tune it to perform better."
             
         print("\nGenerated Feedback")
         print(feedback)
@@ -402,11 +448,15 @@ class EurekaSearch:
             response = self.llm_model._get_raw_response(current_prompt, 
                                                         False # it is the generate_explanation parameter, not used by DeepSeek but it must be passed
                                                         )
+            if response is None:
+                print(f"[Eureka Search] iteration:{i}/{self.reflection_iterations} --> No response from LLM, skipping evaluation.")
+                continue
 
-            code = self.clean_code_string(response)
-            
-            if not code:
-                print(f"[Eureka Search] iteration:{i}/{self.reflection_iterations} No valid code generated, skipping evaluation.")
+            code = self.clean_code_string(response)            
+            if code == "":
+                print(f"[Eureka Search] iteration:{i}/{self.reflection_iterations} --> No valid code generated, skipping evaluation.")
+                print("The ERROR IS IN THE LLM clean_code_string FUNCTION")
+                print(f"LLM Response was:\n{response}")
                 continue
                 
             #----evaluate v2
@@ -452,9 +502,11 @@ class EurekaSearch:
                 # If the code crashed, the stats (0.0, -inf) are fake. 
                 # Do NOT generate strategy feedback. Force LLM to focus ONLY on the bug.
                 feedback_text = (
-                    "CRITICAL ERROR: The code failed to execute. "
-                    "Do not try to improve the reward logic yet. "
-                    "Focus EXCLUSIVELY on fixing the Python syntax error listed in the ERROR LOGS."
+                    "CRITICAL ERROR: YOUR CODE CRASHED WITH A PYTHON ERROR! "
+                    "DO NOT try to improve the reward logic.\n"
+                    "DO NOT add new features.\n"
+                    "DO NOT change anything except fixing the error.\n\n"
+                    "You must focus EXCLUSIVELY on fixing the Python error listed in the ERROR LOGS below."
                 )
             else:                
                 # create a dettailed feedback based on the eval stats to add to the feedback prompt
@@ -470,10 +522,15 @@ class EurekaSearch:
 
             # Ensure err is a string for the prompt, defaulting to "None" if it is None
             error_string = str(err) if err else "None"
+            if err not in [None, "None"]:
+                print("- - - - - "*10)
+                print(f"[Eureka Search Error] Evaluation failed with exception")
+                print(error_string)
+                print("- - - - - "*10)
 
             feedback_prompt_body = EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY.format(
                 #1. the previous code submitted must be the first thing in the prompt 
-                previous_code=code, 
+                previous_code=previous_code, 
                 
                 # 2. only after the previous code add the part with metrics analysis
                 success_rate=eval_stats['success_rate'] * 100,
@@ -522,13 +579,13 @@ class EurekaSearch:
         """
        
         if reward_code_str is None:
-            print("[\u26A0 Warning] No reward_code_str provided, using the best code found during search.")
+            print("[Warning] No reward_code_str provided, using the best code found during search.")
             reward_code_str = self.best_code
         else:
             if reward_code_str != self.best_code:
-                print("[\u26A0 Warning] The provided reward_code_str does not match the best code found during search.")
+                print("[Warning] The provided reward_code_str does not match the best code found during search.")
             else:
-                print("[\u2705 Info] Using the provided reward_code_str for final training.")
+                print("[Info] Using the provided reward_code_str for final training.")
     
         print("\n" + "="*60)
         print(f"STARTING FINAL TRAINING RUN\n")
@@ -553,15 +610,17 @@ class EurekaSearch:
             epochs=final_train_epochs, 
             model_name=f"{self.pure_rl_baseline}_FINAL_BEST",
 
-            save_pkl_model=True  # NOW Save the final model
+            save_pkl_model=True,  # NOW Save the final model
+            track_stats=True  # Track detailed stats for final model
         )
 
+        final_policy.batch_size = 2048  # 4096 for 8x8 / 2048 # for 5x5
+        final_policy.rollout.iterations = 4096  # for 8x8 16384 / # for 5x5 4096
+
         # 3. Train
-        final_policy.trainer()
-        
-        # 4. Save
-        save_path = f"final_model_{self.env_id}_.pt"            
-        torch.save(final_policy.policy_net.state_dict(), save_path)
+        final_policy.trainer(
+            early_stopping_threshold=None  # No early stopping for final training
+        )
         
         return final_policy
 

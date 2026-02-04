@@ -18,13 +18,14 @@ from src.common.env_setup import make_minigrid_env
 from src.methods.pure_rl.ppo.ppo_config import PPO, RecurrentPPO
 
 # Import LLM components
-from src.methods.llm_guided.cached_llm import RobustCachedLLMClient
-from src.methods.llm_guided.llm_shared_utils import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
-from src.methods.llm_guided.DoorKey_Textualizer import get_DOORKEY_description
-from src.methods.llm_guided.Empty_Textualizer import get_EMPTY_description
+from src.methods.llm_guided.ScalarApproach.cached_llm import RobustCachedLLMClient
+from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
+from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
+from src.methods.llm_guided.ScalarApproach.DoorKey_Textualizer import get_DOORKEY_description
+from src.methods.llm_guided.ScalarApproach.Empty_Textualizer import get_EMPTY_description
 
 # Choose LLM Client 
-from src.methods.llm_guided.phi3_5 import Phi35LLMClient
+from src.methods.llm_guided.llm_clients.phi3_5 import Phi35LLMClient
 # from src.methods.llm_guided.gemini import GeminiLLMClient
 
 
@@ -45,24 +46,34 @@ def train_ppo_with_llm(
     textualizer_fn = None
     
     if use_llm:
+        # Define cache directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(current_dir, "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        
         if "DoorKey" in env_id:
             system_prompt = DOOR_KEY_SYSTEM_PROMPT
             textualizer_fn = get_DOORKEY_description
-            name_cache = "doorkey_"+llm_backend+"_cache.json"
-            cache_name = cache_name or name_cache
+            default_cache = "doorkey_"+llm_backend+"_cache.json"
         elif "Empty" in env_id:
             system_prompt = EMPTY_SYSTEM_PROMPT
             textualizer_fn = get_EMPTY_description
-            name_cache = "empty_"+llm_backend+"_cache.json"
-            cache_name = cache_name or name_cache
+            default_cache = "empty_"+llm_backend+"_cache.json"
         else:
             raise ValueError(f"Unknown environment: {env_id}")
+        
+        # Build full cache path
+        target_filename = cache_name or default_cache
+        if not os.path.isabs(target_filename):
+            cache_name = os.path.join(cache_dir, target_filename)
+        else:
+            cache_name = target_filename
         
         # Initialize LLM
         if llm_backend == 'phi':
             real_client = Phi35LLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
-            from src.methods.llm_guided.gemini import GeminiLLMClient
+            from src.methods.llm_guided.llm_clients.gemini import GeminiLLMClient
             real_client = GeminiLLMClient(system_prompt=system_prompt)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")

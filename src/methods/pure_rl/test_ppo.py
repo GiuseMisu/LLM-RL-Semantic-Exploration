@@ -26,7 +26,7 @@ def main():
 
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 
-                            max_steps=650 # 250 for 5x5, but 650 for 8x8
+                            max_steps=250 # 250 for 5x5, but 650 for 8x8
                             )()
     
     print("\n=========== TRAINING PHASE===========\n")
@@ -34,17 +34,17 @@ def main():
     policy = PPO(
                 env = env, 
                 # done automatically inside the code output_dim= 4, 
-                epochs = 30, 
+                epochs = 10, 
                 gamma = 0.99, 
                 epsilon = 0.2,
                 model_name=f"PPO_{env_id.split('-')[1]}_llm_guided"#"PPO"
                 )
 
-    policy.batch_size = 4096  # for 8x8 /  2048 # for 5x5
+    policy.batch_size = 2048  # 4096 for 8x8 /  2048 # for 5x5
 
     # rollout buffer size to match or exceed the batch size
     # rollout buffer size to match or exceed the batch size
-    policy.rollout.iterations = 16384  # for 8x8 / 4096 # for 5x5 
+    policy.rollout.iterations = 4096 # 16384 for 8x8 / 4096 # for 5x5 
 
     # Train the environment
     # policy.trainer(
@@ -55,19 +55,20 @@ def main():
     # load a trained version of the environment
     policy.load()
 
-    print("\n=========== EVALUATION PHASE ===========\n")
-    eval_env = make_minigrid_env(env_id=env_id, 
-                                 render_mode="rgb_array", 
-                                 max_steps=50
-                                 )()
+    # print("\n=========== EVALUATION PHASE ===========\n")
+    # eval_env = make_minigrid_env(env_id=env_id, 
+    #                              render_mode="rgb_array", 
+    #                              max_steps=250
+    #                              )()
 
-    policy.eval()
+    # policy.eval()
     
-    # Evaluate over multiple episodes for statistics
-    stats = evaluate_policy(eval_env, 
-                            policy, 
-                            n_episodes=10
-                            )
+    # # Evaluate over multiple episodes for statistics
+    # stats = evaluate_policy(eval_env, 
+    #                         policy, 
+    #                         n_episodes=10,
+    #                         save_gif=False
+    #                         )
 
 if __name__ == "__main__":
     main()
