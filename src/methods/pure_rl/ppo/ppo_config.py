@@ -183,7 +183,7 @@ class PPO(Policy):
         """
         max_rew = -float("inf")
         consecutive_epochs_mean_reward = []
-        training_history = [] #Store all episode rewards
+        training_history = [] #Store all episode rewards FROM THE TRUE ENV (not shaped) for eureka approach
     
         # Initialize Tracker if tracking is enabled
         if self.track_stats:
@@ -194,12 +194,13 @@ class PPO(Policy):
             
             episode_reward, states, actions, log_probs, advantages, returns, eps_sizes = self.rollout.forward_pass()
             
-            # Unpack rewards: (avg_reward, avg_reward_aug, avg_env_reward)
-            # avg_reward: what rollout sees from env.step (may be augmented by wrapper)
-            # avg_env_reward: TRUE env reward (from info dict if wrapper used, else same as avg_reward)
-            avg_reward, avg_env_reward = episode_reward
+            # Unpack rewards: (avg_reward, avg_env_reward, avg_llm_reward)
+            # avg_reward: what rollout sees from env.step (total shaped reward)
+            # avg_env_reward: TRUE env reward (from info dict if wrapper used)
+            # avg_llm_reward: LLM contribution (0.0 for pure RL)
+            avg_reward, avg_env_reward, avg_llm_reward = episode_reward
             
-            # Store TRUE env reward for eureka approach (for reflection prompt)
+            # Store --TRUE-- env reward for eureka approach (for reflection prompt)
             training_history.append(avg_env_reward)
         
             #[LOGGING]
@@ -219,7 +220,7 @@ class PPO(Policy):
             
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # early stopping Uses TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -238,7 +239,8 @@ class PPO(Policy):
                 # #[LOGGING] Log Metrics
                 tracker.log(e, {
                     "Env_Reward": avg_env_reward,      # TRUE env reward
-                    "Shaped_Reward": avg_reward,       # What agent optimizes
+                    "LLM_Reward": avg_llm_reward,      # LLM contribution (0.0 for pure RL)
+                    "Total_Reward": avg_reward,        # What agent optimizes (env + llm weighted)
                     "Episode_Length": avg_ep_len,
                     "Policy_Loss": p_loss,
                     "Value_Loss": v_loss,
@@ -302,7 +304,7 @@ class RecurrentPPO(PPO):
             output_dim: int | None = None, # => si puo togliere come sopra
             encode_dim: int = 128,  # =>  CNN output size
             hidden_dim: int = 128,  # Match encode_dim for no bottleneck
-            sequence_length: int = 16,  # TBPTT sequence length
+            sequence_length: int = 32,  # TBPTT sequence length
             recurrence: str = "lstm",
             model_name: str = "RecurrentPPO",  #with ppo recurrent save also the type of recurrence
             save_pkl_model: bool = True,  # di default salva il modello migliore
@@ -690,7 +692,7 @@ class RecurrentPPO(PPO):
             )
             
             # Unpack rewards: (avg_reward, avg_env_reward)
-            avg_reward, avg_env_reward = episode_reward
+            avg_reward, avg_env_reward, avg_llm_reward = episode_reward
 
             # Reset hidden for next rollout
             self._hidden = None
@@ -712,7 +714,7 @@ class RecurrentPPO(PPO):
 
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(avg_env_reward)  # Use TRUE env reward
+                consecutive_epochs_mean_reward.append(avg_env_reward)  # early stpping Uses TRUE env reward
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 
@@ -739,7 +741,8 @@ class RecurrentPPO(PPO):
                 avg_ep_len = np.mean(eps_sizes) if eps_sizes else 0
                 tracker.log(e, {
                     "Env_Reward": avg_env_reward,      # TRUE env reward
-                    "Shaped_Reward": avg_reward,       # What agent optimizes
+                    "LLM_Reward": avg_llm_reward,      # LLM contribution (0.0 for pure RL)
+                    "Total_Reward": avg_reward,        # What agent optimizes (env + llm weighted)
                     "Episode_Length": avg_ep_len,
                     "Policy_Loss": p_loss,
                     "Value_Loss": v_loss,

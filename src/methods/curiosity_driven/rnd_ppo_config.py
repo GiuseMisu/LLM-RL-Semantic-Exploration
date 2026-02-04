@@ -393,14 +393,14 @@ class RNDPPO(PPO):
                 print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f} ==> New best ENV REWARD, saving")
                 max_rew = avg_ext
                 self.save(
-                    filename=f"{self.model_name}_{self.env_type}_best_env_reward"
+                    filename=f"{self.model_name}_{self.env_type}_best"
                 ) 
             else:
                 print(f"Epoch {e+1}/{self.epochs} | Env: {avg_ext:.4f} | Curiosity: {avg_int:.4f} | Total: {avg_total:.4f}")
 
             #activate the early stopping mechanism if early_stopping_threshold is set
             if early_stopping_threshold is not None:
-                consecutive_epochs_mean_reward.append(avg_ext)
+                consecutive_epochs_mean_reward.append(avg_ext) # the early stoppin is only based on the ENV REWARD
                 if len(consecutive_epochs_mean_reward) > window_size:
                     consecutive_epochs_mean_reward.pop(0)
                 

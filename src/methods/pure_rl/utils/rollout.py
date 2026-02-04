@@ -75,10 +75,13 @@ class Rollout():
     def forward_pass(self):
         states, actions, log_probs, values, rewards, done = [], [], [], [], [], False
 
+        # metrics to track
         total_reward = 0.
         total_env_reward = 0.
+        total_llm_reward = 0. 
         episode_reward = 0.
         ep_len = 0
+
         state, _ = self.env.reset()
 
         i = 0
@@ -108,19 +111,17 @@ class Rollout():
             true_env_reward = info.get('env_reward', reward) if isinstance(info, dict) else reward
             total_env_reward += float(true_env_reward)
 
+            # Extract LLM reward if available (0.0 for pure RL)
+            llm_reward = info.get('llm_reward', 0.0) if isinstance(info, dict) else 0.0
+            total_llm_reward += float(llm_reward)
+
             # Track shaped reward (what agent optimizes)
             episode_reward += float(reward)
             total_reward += float(reward)
                                     
             done = terminated or truncated
            
-            if done:
-                #debug mid epoch print
-                # if terminated:
-                #     print(f"[ENV SOLVED] Episode: {i+1}/{self.iterations} Reward: {reward}")
-                # if truncated:
-                #     print(f"Episode: {i+1}/{self.iterations}: env truncated, Reward {reward}")
-                    
+            if done:                   
                 values.append(torch.zeros_like(values[0]))
                 state, _ = self.env.reset()
                 indexes.append(i) # saves where an episode ends
@@ -155,8 +156,9 @@ class Rollout():
         num_episodes = max(len(indexes) + 1, 1)
         avg_reward = total_reward / num_episodes
         avg_env_reward = total_env_reward / num_episodes
+        avg_llm_reward = total_llm_reward / num_episodes
 
-        return (avg_reward, avg_env_reward), states, actions, log_probs, advantages, returns, eps_sizes
+        return (avg_reward, avg_env_reward, avg_llm_reward), states, actions, log_probs, advantages, returns, eps_sizes
     
 
     def forward_pass_recurrent(self, init_hidden_fn, sequence_length: int = 16):
@@ -186,10 +188,13 @@ class Rollout():
         states, actions, log_probs, values, rewards = [], [], [], [], []
         hidden_states = []  # Store hidden state at start of each chunk
         
+        # metrics to track
         total_reward = 0.
         total_env_reward = 0. 
+        total_llm_reward = 0.
         episode_reward = 0.
         num_episodes = 0
+
         state, _ = self.env.reset()
         
         # Initialize hidden state (h: hidden state, c: cell state)
@@ -242,6 +247,10 @@ class Rollout():
             true_env_reward = info.get('env_reward', reward) if isinstance(info, dict) else reward
             total_env_reward += float(true_env_reward)
 
+            # Extract LLM reward if available (0.0 for pure RL)
+            llm_reward = info.get('llm_reward', 0.0) if isinstance(info, dict) else 0.0
+            total_llm_reward += float(llm_reward)
+
             episode_reward += float(reward)
             
             done = terminated or truncated
@@ -278,6 +287,7 @@ class Rollout():
         num_episodes = max(num_episodes, 1)
         avg_reward = total_reward / num_episodes
         avg_env_reward = total_env_reward / num_episodes
+        avg_llm_reward = total_llm_reward / num_episodes 
         
         # Convert to tensors
         states = torch.cat(states)  # (total_steps, 7, 7, 3)
@@ -293,6 +303,6 @@ class Rollout():
         returns = self.calculate_returns(rewards, indexes)
         advantages = self.calculate_advantages(returns, values)
 
-        # Return tuple with (avg_reward, avg_env_reward) for consistency with forward_passNotRecurrent()
-        return ((avg_reward, avg_env_reward), states, actions, log_probs, advantages, returns, 
+        # Return tuple with (avg_reward, avg_env_reward, avg_llm_reward)
+        return ((avg_reward, avg_env_reward, avg_llm_reward), states, actions, log_probs, advantages, returns, 
                 eps_sizes, hidden_states, indexes)

@@ -1,0 +1,163 @@
+
+1. approach Pure RL (PPO & Recurrent PPO)
+
+- Env_Reward: The true environment reward received
+- LLM_Reward: LLM contribution (always 0.0 for pure RL)
+- Total_Reward: What the agent optimizes (env + llm weighted, same as Env_Reward here)
+- Episode_Length: Average steps per episode -> less is better cause it means faster task completion
+- Policy_Loss: Actor loss from PPO update, meaning how well the policy is improving 
+    -> Policy_Loss low = agent is taking better actions (at the beginning this may be high as the agent explores)
+- Value_Loss: Critic loss from PPO update, meaning how well the value function is improving 
+    -> Value_Loss low = better value function estimates = Agent accurately predicts "if I do X, I'll get Y reward later"
+    -> when high = Agent keeps getting surprised by rewards (didn't see them coming)
+- Entropy: Policy entropy = "For a SINGLE state, how random is the action choice?"
+    -> low entropy means it has understood the task and is exploiting known good actions that will be on average always the same (less randomness/exploration)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+2. Curiosity-Driven (RND-PPO)
+
+- Extrinsic_Reward: External environment reward (ie FROM THE ENVIRONMENT)
+- Intrinsic_Reward: Curiosity bonus from RND 
+- Total_Reward: Combined extrinsic + intrinsic reward that the agent optimizes THIS!
+- Episode_Length: Average steps per episode
+- Policy_Loss: Actor loss from PPO update
+- Value_Loss: Critic loss from PPO update
+- RND_Loss: Loss from the curiosity module (prediction error) 
+    -> lower is better, the agent is learning to predict the environment better = less surprised = NO NOVELTY
+    -> higher means more novelty = more exploration
+- Entropy: Policy entropy
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+3a. LLM-Guided Scalar Approach
+
+Uses the same PPO/RecurrentPPO classes, so tracks:
+- Env_Reward: The true environment reward
+- LLM_Reward: Semantic reward from LLM scoring states
+- Total_Reward: Weighted combination (env + llm_weight × llm)
+- Episode_Length: Average steps per episode
+- Policy_Loss: Actor loss
+- Value_Loss: Critic loss
+- Entropy: Policy entropy
+
+3b. Eureka Approach (Reward Function Evolution)
+
+For each reflection iteration, tracks:
+- Success_Rate: ratio of episodes that reached the goal
+- Key_Pickup_Rate: ratio of episodes where agent picked up the key
+- Door_Open_Rate: ratio of episodes where agent opened the door
+- Mean_Reward: Average total reward across evaluation episodes
+- Mean_Steps: Average episode length (-1 if infinite/timeout)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+Esperimenti da fare:
+
+#empty env just to show that is solvable easily (even with bigger size) by pure RL, no need of LLM guidance
+5x5 empty ppo, recurrentPPO, RND
+8x8 empty ppo, recurrentPPO, RND
+
+# dooreky start to be more challenging, but still solvable by pure RL 
+# the difference is the converging needed between pure RL and LLM-guided approaches becomes more evident
+5x5 doorkey solved just by PPO, recurrentPPO, RND, llm_scalar (small LLM),  Eureka
+8x8 doorkey solved just by PPO, recurrentPPO, RND, llm_scalar (bigger LLM), Eureka
+
+Parameter set up
+- 5x5 Empty/DoorKey
+    -> batch_size	        2048
+    -> rollout.iterations	4096
+    -> max_step             250
+    -> epoch                200 -> with early stopping at 0.98 for 10 epochs
+
+- 8x8 Empty/DoorKey
+    -> batch_size	        4096
+    -> rollout.iterations	16384
+    -> max_step             500
+    -> epoch                400 -> with early stopping at 0.98 for 10 epochs
+
+
+LLM-RL-Semantic-Exploration/
+│
+├── src/                         
+│   ├── common/
+│   ├── methods/
+│   └── ...
+│
+├── experiments/                  # All experiment scripts
+│   │
+│   ├── empty_5x5/               # Scripts for each environment
+│   │   ├── run_ppo.py
+│   │   ├── run_recurrent_ppo.py
+│   │   └── run_rnd.py
+│   │
+│   ├── empty_8x8/
+│   │   ├── run_ppo.py
+│   │   ├── run_recurrent_ppo.py
+│   │   └── run_rnd.py
+│   │
+│   ├── doorkey_5x5/
+│   │   ├── run_ppo.py
+│   │   ├── run_recurrent_ppo.py
+│   │   ├── run_rnd.py
+│   │   ├── run_llm_scalar_phi.py
+│   │   └── run_eureka_qwen.py
+│   │
+│   └── doorkey_8x8/
+│       ├── run_ppo.py
+│       ├── run_recurrent_ppo.py
+│       ├── run_rnd.py
+│       ├── run_llm_scalar_deepseek.py
+│       └── run_eureka_qwen.py
+│
+├── results/                      # NEW: All experiment outputs
+│   ├── models/                   # Trained model checkpoints
+│   │   ├── empty_5x5/
+│   │   │   ├── PPO_EMPTY_5x5_best.pkl
+│   │   │   ├── RecurrentPPO_EMPTY_5x5_best.pkl
+│   │   │   └── RNDPPO_EMPTY_5x5_best.pkl
+│   │   │
+│   │   ├── empty_8x8/
+│   │   │   └── ...
+│   │   │
+│   │   ├── doorkey_5x5/
+│   │   │   ├── PPO_DOORKEY_5x5_best.pkl
+│   │   │   ├── LLMScalar_Phi_DOORKEY_5x5_best.pkl
+│   │   │   └── Eureka_Qwen_DOORKEY_5x5_best.pkl
+│   │   │
+│   │   └── doorkey_8x8/
+│   │       └── ...
+│   │
+│   └── reward_functions/         # Eureka-generated reward functions
+│       ├── doorkey_5x5/
+│       │   └── BestRwdFunc_DoorKey5x5_Qwen.py
+│       └── doorkey_8x8/
+│           └── BestRwdFunc_DoorKey8x8_Qwen.py
+│
+├── logs/                         # Metrics & plots (already exists)
+│   ├── metrics_tracked.txt
+│   │
+│   ├── PPO_EMPTY_5x5/
+│   │   ├── PPO_EMPTY_5x5_metrics.csv
+│   │   ├── Env_Reward.png
+│   │   ├── Policy_Loss.png
+│   │   └── ...
+│   │
+│   ├── RNDPPO_DOORKEY_5x5/
+│   │   └── ...
+│   │
+│   ├── Eureka_DoorKey5x5_Qwen/
+│   │   ├── Eureka_DoorKey5x5_Qwen_metrics.csv
+│   │   ├── Success_Rate.png
+│   │   └── ...
+│   │
+│   └── ...
+│
+├── analysis/                     # Post-experiment analysis
+│   ├── compare_approaches.py     # Compare all methods
+│   ├── plot_comparison.py        # Generate comparison plots
+│   └── generate_tables.py        # Create LaTeX/Markdown tables
+│
+├── main.py                       # Keep as is (or deprecate)
+├── README.md
+└── requirements.txt

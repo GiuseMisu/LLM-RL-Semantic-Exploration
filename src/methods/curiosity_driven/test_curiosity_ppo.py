@@ -54,27 +54,26 @@ def main():
     
     # Train the environment
     policy.trainer(
-        early_stopping_threshold=None
-        # early_stopping_threshold = 0.90,  # average reward threshold for early stopping 
-        # window_size = 15  # Number of epochs to average over
+        early_stopping_threshold = 0.95,  # average ENV_RWD threshold for early stopping 
+        window_size = 10  # Number of epochs to average over
         )    
     
     # load a trained version of the environment
     policy.load()
 
-    # print("\n\nEvaluating the trained policy")
-    # eval_env = make_minigrid_env(env_id=env_id, 
-    #                              render_mode="rgb_array", 
-    #                              max_steps=50
-    #                              )()
+    print("\n\nEvaluating the trained policy")
+    eval_env = make_minigrid_env(env_id=env_id, 
+                                 render_mode="rgb_array", 
+                                 max_steps=50
+                                 )()
 
-    # policy.eval()
+    policy.eval()
     
-    # # Evaluate over multiple episodes for statistics
-    # stats = evaluate_policy(eval_env, 
-    #                         policy, 
-    #                         n_episodes=10 # evaluation over 10 episodes
-    #                         )
+    # Evaluate over multiple episodes for statistics
+    stats = evaluate_policy(eval_env, 
+                            policy, 
+                            n_episodes=10 # evaluation over 10 episodes
+                            )
     
 
 if __name__ == "__main__":

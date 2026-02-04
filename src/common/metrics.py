@@ -33,7 +33,7 @@ class MetricsTracker:
         df.to_csv(filepath, index=False)
         print(f"Metrics saved to {filepath}")
 
-    def plot(self):
+    def plot(self, x_label="Epoch"):
         """
         Generate and save separate plots for each tracked metric.
         """
@@ -45,7 +45,7 @@ class MetricsTracker:
             plt.figure(figsize=(10, 6))
             plt.plot(df['epoch'], df[metric], label=metric)
             plt.title(f"{self.run_name} - {metric}")
-            plt.xlabel("Epoch")
+            plt.xlabel(x_label) # Changed from hardcoded "Epoch" to variable
             plt.ylabel(metric)
             plt.grid(True, alpha=0.3)
             plt.legend()

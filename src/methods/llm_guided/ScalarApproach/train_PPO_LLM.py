@@ -124,7 +124,7 @@ def train_ppo_with_llm(
 
     # === Train ===
     policy.trainer(
-        early_stopping_threshold= 195,  # Stop if avg reward reaches 95%
+        early_stopping_threshold = 0.95,  # average ENV_RWD threshold for early stopping 
         window_size=10  # Average over last 10 epochs
     )
 
