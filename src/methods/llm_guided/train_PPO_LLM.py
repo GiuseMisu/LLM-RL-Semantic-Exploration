@@ -71,7 +71,7 @@ def train_ppo_with_llm(
         elif llm_backend == 'deepseek671b':
             real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt)
         elif llm_backend == 'hermes':
-            real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = HermesLLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gemini':
             from src.methods.llm_guided.gemini import GeminiLLMClient
             real_client = GeminiLLMClient(system_prompt=system_prompt)
@@ -109,12 +109,18 @@ def train_ppo_with_llm(
         model_name=f"PPO_{env_id.split('-')[1]}_llm_guided",
     )
     
+    # Add More Exploration
+    policy.batch_size = 4096  # for 8x8 /  2048 # for 5x5
+
+    # rollout buffer size to match or exceed the batch size
+    policy.rollout.iterations = 16384  # for 8x8 / 4096
+
     if load:
         policy.load()
 
     # === Train ===
     policy.trainer(
-        early_stopping_threshold= 195,  # Stop if avg reward reaches 95%
+        early_stopping_threshold= None,  # Stop if avg reward reaches 95%
         window_size=10  # Average over last 10 epochs
     )
 
@@ -143,10 +149,11 @@ if __name__ == "__main__":
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-8x8-v0",
         use_llm=True,
-        llm_backend='deepseek671b', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
+        llm_backend='hermes', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=3,
-        max_steps=250,
+        epochs=500,
+        max_steps=600,
         verbose=True, 
-        voting_samples=3
+        voting_samples=3,
+        load=True
     )

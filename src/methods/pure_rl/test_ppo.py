@@ -16,7 +16,7 @@ from src.common.policy_evaluation import evaluate_policy
 
 def main():
 
-    env_id = "MiniGrid-DoorKey-5x5-v0"
+    env_id = "MiniGrid-DoorKey-8x8-v0"
     #env_id = "MiniGrid-DoorKey-8x8-v0"
 
     #==============seed ti garantisce sempre steso env config ============
@@ -37,7 +37,7 @@ def main():
                 epochs = 30, 
                 gamma = 0.99, 
                 epsilon = 0.2,
-                model_name="PPO"
+                model_name=f"PPO_{env_id.split('-')[1]}_llm_guided"#"PPO"
                 )
 
     policy.batch_size = 4096  # for 8x8 /  2048 # for 5x5
@@ -47,10 +47,10 @@ def main():
     policy.rollout.iterations = 16384  # for 8x8 / 4096 # for 5x5 
 
     # Train the environment
-    policy.trainer(
-        early_stopping_threshold = 0.90,  # average reward threshold for early stopping 
-        window_size = 10  # Number of epochs to average over
-        )    
+    # policy.trainer(
+    #     early_stopping_threshold = 0.90,  # average reward threshold for early stopping 
+    #     window_size = 10  # Number of epochs to average over
+    #     )    
     
     # load a trained version of the environment
     policy.load()
