@@ -55,9 +55,8 @@ def main():
 
     # Train the environment
     policy.trainer(
-        early_stopping_threshold=None
-        # early_stopping_threshold = 0.93,  # average reward threshold for early stopping 
-        # window_size = 10  # Number of epochs to average over
+        early_stopping_threshold = 0.95,  # average ENV_RWD threshold for early stopping 
+        window_size = 10  # Number of epochs to average over
         )    
     
     # load a trained version of the environment

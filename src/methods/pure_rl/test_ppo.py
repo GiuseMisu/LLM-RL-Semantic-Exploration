@@ -47,28 +47,28 @@ def main():
     policy.rollout.iterations = 4096 # 16384 for 8x8 / 4096 # for 5x5 
 
     # Train the environment
-    # policy.trainer(
-    #     early_stopping_threshold = 0.90,  # average reward threshold for early stopping 
-    #     window_size = 10  # Number of epochs to average over
-    #     )    
+    policy.trainer(
+        early_stopping_threshold = 0.90,  # average ENV_RWD threshold for early stopping 
+        window_size = 10  # Number of epochs to average over
+        )    
     
     # load a trained version of the environment
     policy.load()
 
-    # print("\n=========== EVALUATION PHASE ===========\n")
-    # eval_env = make_minigrid_env(env_id=env_id, 
-    #                              render_mode="rgb_array", 
-    #                              max_steps=250
-    #                              )()
+    print("\n=========== EVALUATION PHASE ===========\n")
+    eval_env = make_minigrid_env(env_id=env_id, 
+                                 render_mode="rgb_array", 
+                                 max_steps=250
+                                 )()
 
-    # policy.eval()
+    policy.eval()
     
-    # # Evaluate over multiple episodes for statistics
-    # stats = evaluate_policy(eval_env, 
-    #                         policy, 
-    #                         n_episodes=10,
-    #                         save_gif=False
-    #                         )
+    # Evaluate over multiple episodes for statistics
+    stats = evaluate_policy(eval_env, 
+                            policy, 
+                            n_episodes=10,
+                            save_gif=False
+                            )
 
 if __name__ == "__main__":
     main()

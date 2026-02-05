@@ -15,44 +15,38 @@ import traceback
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 from src.common.env_setup import make_minigrid_env
-from src.methods.pure_rl.ppo.ppo_config import PPO  
+from src.methods.pure_rl.ppo.ppo_config import PPO, RecurrentPPO
 from src.methods.llm_guided.EurekaApproach.eureka_prompt_doorkey import EUREKA_INITIAL_PROMPT_DOORKEY, EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY, MINIGRID_API_CONTEXT_DOORKEY
+from src.common.metrics import MetricsTracker  
+
+
 
 class EurekaSearch:
     def __init__(self, env_id, 
                  llm_model, 
-                 reflection_iterations=5, # numero di volte refine prompt and reward function
+                 reflection_iterations=5,                  # numero di volte refine prompt and reward function
                  
                  training_epochs=30, train_max_steps=250,  # training params pre eval
-                 num_eval_episodes=10, # numero di episodi su cui valuti post training
-                 pure_rl_baseline='PPO'            
+                 num_eval_episodes=10,                     # numero di episodi su cui valuti post training
+                 pure_rl_baseline='PPO',                    # which pure RL baseline to use 
+
+                 # must be the same between Eureka evaluation and the final training
+                 batch_size=2048,                          
+                 rollout_iterations= 4096   
                  ):
+        
+        # LLM client (stateless, no LLM chat). Always embed previous code + feedback in each prompt
+        # so the model focuses on fixing that specific compute_reward version (no chat memory).
+        # Follows the Eureka approach of passing prior code with each query.
+        self.llm_model = llm_model
+
         self.env_id = env_id
 
-        #extract the env size to place them in the dynamic context prompt
-        if "5x5" in env_id:
-            self.env_width = 5
-            self.env_height= 5 
-        elif "8x8" in env_id:
-            self.env_width = 8
-            self.env_height= 8
-        else:
-            #find number in the env id string and extract it
-            size_match = re.search(r'(\d+)x(\d+)', env_id)
-            if size_match:
-                self.env_width = int(size_match.group(1))
-                self.env_height= int(size_match.group(2))
-            else:
-                raise ValueError(f"Cannot extract env size from env_id: {env_id}")
-
-        # the LLM client is based on the standard implementation defined in the relative file
-        # currently interaction with LLM is purely STATELESS (i.e. no conversation memory)
-        # keep a chat history, the LLM will see N different versions of compute_reward often mixes them up
-        # we do manually formatting the prompt with {previous_code} and {feedback}, this ensures LLM pays attention to the exact thing we want it to fix, rather than getting lost in a long conversation log.
-        # PROOF:
-        # this approach is confirmed byt the eureka paper that talks about Evolutionary Algorithm, not a Conversational Agent
-        # Moreover the Algorithm 1 showes that each time they query the LLM for reflection thay add to the prompt the previous code, this would not be necessary in a conversational agent that has memory of past messages
-        self.llm_model = llm_model      
+        # Extract environment parameters (width, height, name)
+        self.env_width, self.env_height, self.name_env = self._extract_env_parameters()
+        
+        # Extract model name from LLM client
+        self.model_name = self._extract_model_name()     
           
         self.best_code = None
         self.best_reward = -float('inf')
@@ -69,6 +63,62 @@ class EurekaSearch:
 
         self.pure_rl_baseline = pure_rl_baseline
 
+        self.batch_size = batch_size
+        self.rollout_iterations = rollout_iterations
+
+    def _extract_env_parameters(self):
+        """
+        Extract and set environment-related parameters from env_id.
+        Sets: env_width, env_height, name_env
+        """
+        # Extract environment dimensions
+        if "5x5" in self.env_id:
+            env_width = 5
+            env_height = 5 
+        elif "8x8" in self.env_id:
+            env_width = 8
+            env_height = 8
+        else:
+            # Find number in the env_id string and extract it
+            size_match = re.search(r'(\d+)x(\d+)', self.env_id)
+            if size_match:
+                env_width = int(size_match.group(1))
+                env_height = int(size_match.group(2))
+            else:
+                raise ValueError(f"Cannot extract env size from env_id: {self.env_id}")
+        
+        # Determine environment type name
+        if "DoorKey" in self.env_id:
+            name_env = f"DoorKey{env_width}x{env_height}"
+        elif "Empty" in self.env_id:
+            name_env = f"Empty{env_width}x{env_height}"
+        else:
+            name_env = "UnknownEnv"
+        
+        return env_width, env_height, name_env
+
+    def _extract_model_name(self):
+        """
+        Extract and return a clean model name from the LLM client.
+        Returns: model_name (str)
+        """
+        llm_name = self.llm_model.model_name.lower()
+        
+        if "deepseek-r1" in llm_name or "deepseek-r1:8b" in llm_name:
+            return "DeepSeekR1_8b"
+        elif "deepseek-v3.1" in llm_name or "deepseek-v3" in llm_name or "671b-cloud" in llm_name:
+            return "DeepSeek671b"
+        elif "phi3.5" in llm_name or "phi3_5" in llm_name or self.llm_model.model_name.startswith("phi3"):
+            return "Phi3_5"
+        elif "sonar-reasoning-pro" in llm_name or "sonar" in llm_name:
+            return "Perplexity"
+        elif "gpt-oss" in llm_name:
+            return "GPT-OSS"
+        elif "qwen" in llm_name:
+            return "Qwen"
+        else:
+            return "UnknownModel"
+    
     def clean_code_string(self, llm_output):
         # clean the llm ouput to preserve only the code part
         if llm_output is None:    
@@ -76,8 +126,7 @@ class EurekaSearch:
             return ""
         else:
             #[debug] print the function generated
-            #print(f"LLM Output:\n{llm_output}\n{'-'*40}")
-            # old code_match = re.search(r"```python(.*?)```", llm_output, re.DOTALL)
+            #print(f"LLM Output:\n{llm_output}\n{'-'*40}")            
             code_match = re.search(r"```[Pp]ython\s*(.*?)```", llm_output, re.DOTALL)
             if code_match:
                 print("the code had the python tags")
@@ -114,20 +163,33 @@ class EurekaSearch:
                 max_steps=self.train_max_steps  # Short horizons for quick checks                 
             )()
 
-            policy = PPO(
-                env=env,
-                gamma=0.99,
-                epsilon=0.2,
-                epochs=self.training_epochs,  # SHORT TRAINING just to see slope
-                model_name=self.pure_rl_baseline,
+            if self.pure_rl_baseline == 'RecurrentPPO':
+                policy = RecurrentPPO(
+                    env=env,
+                    gamma=0.99,
+                    epsilon=0.2,
+                    epochs=self.training_epochs,
+                    encode_dim=128,    # CNN output
+                    hidden_dim=64,      # LSTM hidden size
+                    recurrence="lstm",
+                    model_name=self.pure_rl_baseline,
+                    save_pkl_model=False,
+                    track_stats=False
+                )
+            else: # Default to PPO
+                policy = PPO(
+                    env=env,
+                    gamma=0.99,
+                    epsilon=0.2,
+                    epochs=self.training_epochs,  # SHORT TRAINING just to see slope
+                    model_name=self.pure_rl_baseline,
+                    save_pkl_model=False,  # Do not save model during Eureka evaluations
+                    track_stats=False  # Do not track detailed stats to save time
+                )
 
-                save_pkl_model=False,  # Do not save model during Eureka evaluations
-                track_stats=False  # Do not track detailed stats to save time
-            )
-
-            policy.batch_size = 1024 #2048  # 4096 for 8x8 / 2048 # for 5x5
-            # rollout buffer size to match or exceed the batch size
-            policy.rollout.iterations = 2048 #4096  # for 8x8 16384 / # for 5x5 4096
+            # use the passed batch size and rollout iterations
+            policy.batch_size = self.batch_size
+            policy.rollout.iterations = self.rollout_iterations
             
             print("\n====[TRAINING WITH LLM_REWARD_FUNCTION]====\n")
             try:
@@ -173,7 +235,12 @@ class EurekaSearch:
                 
                 # Track task progress
                 picked_up_key = False
-                opened_door = False                
+                opened_door = False       
+
+                # Reset hidden state for RecurrentPPO at the start of each episode
+                if self.pure_rl_baseline == 'RecurrentPPO':
+                    policy.reset_hidden()
+
                 while not done:
                     # this version does not work due to -> .to() function in PPO.forward
                     # action, _ = policy.get_act(obs)
@@ -208,6 +275,8 @@ class EurekaSearch:
 
                     state_tensor = torch.FloatTensor(obs).unsqueeze(0).to(policy.device)
                     with torch.no_grad():
+                        # Both PPO and RecurrentPPO have get_act() returning (action_logits, value)
+                        # RecurrentPPO internally manages its hidden state
                         action_logits, _ = policy.get_act(state_tensor)
                         action_prob = torch.nn.functional.softmax(action_logits, dim=-1)
                         dist = torch.distributions.Categorical(action_prob)
@@ -257,23 +326,9 @@ class EurekaSearch:
             key_pickup_rate = eval_stats['key_pickups'] / self.num_eval_episodes
             door_open_rate = eval_stats['door_opens'] / self.num_eval_episodes
             mean_reward = np.mean(eval_stats['total_rewards'])
-            mean_steps_to_success = np.mean(eval_stats['steps_to_success']) if eval_stats['steps_to_success'] else float('inf')
-            
-            # =====================================================================
-            # AGGREGATE SCORE (combine metrics into single fitness score)
-            # =====================================================================
-            # Weight different aspects of learning
-            fitness_score = (
-                success_rate * 200 +           # Most important is the goal reached
-                key_pickup_rate * 30 +         # Partial credit for subtasks
-                door_open_rate * 70 +
-                max(0, mean_reward) * 50 +
-                (1.0 / (mean_steps_to_success + 1)) * 10 +  # Efficiency bonus
-                train_reward_delta * 30           # Was training improving?
-            )
+            mean_steps_to_success = np.mean(eval_stats['steps_to_success']) if eval_stats['steps_to_success'] else float('inf')            
             
             return {
-                'fitness_score': fitness_score,
                 'success_rate': success_rate,
                 'key_pickup_rate': key_pickup_rate,
                 'door_open_rate': door_open_rate,
@@ -286,7 +341,6 @@ class EurekaSearch:
             full_error_trace = traceback.format_exc()            
             
             return {
-                'fitness_score': -float('inf'),
                 'success_rate': 0.0,
                 'key_pickup_rate': 0.0,
                 'door_open_rate': 0.0,
@@ -439,11 +493,19 @@ class EurekaSearch:
             width=self.env_width,
             height=self.env_height,
         )
-            
+
+        # Initialize MetricsTracker for Eureka iterations
+        # this tracks the metrics during the eureka during evaluatoin of each candidate reward function
+        # to see if the reflection iterations are improving the reward function quality over time
+        tracker = MetricsTracker(
+            run_name=f"Eureka_{self.name_env}_{self.model_name}",
+            log_dir="logs"
+        )
+
         for i in range(self.reflection_iterations):
             print(f"\n>>> Iteration to improve HEURISTIC: {i+1}/{self.reflection_iterations}")
             
-            # 1. Generate
+            # Generate code from LLM
             # no need to pass through the cache in this approach so call irectly llm_model._get_raw_response
             response = self.llm_model._get_raw_response(current_prompt, 
                                                         False # it is the generate_explanation parameter, not used by DeepSeek but it must be passed
@@ -459,7 +521,7 @@ class EurekaSearch:
                 print(f"LLM Response was:\n{response}")
                 continue
                 
-            #----evaluate v2
+            #evaluate the candidate reward function
             eval_stats, err = self.evaluate_candidate_v2(code)
             print("- "*20 + "\nEvaluation Metrics:")
             for k, v in eval_stats.items():
@@ -469,34 +531,30 @@ class EurekaSearch:
             mean_rew = eval_stats['mean_reward'] # the mean of the total_summed_reward per episode
             success = eval_stats['success_rate']
 
-            # 3. Update Best just to check
+            #=========================KEEP TRACK OF METRICS OVER TIME=========================
+            # Log metrics for this iteration
+            tracker.log(i, {
+                "Success_Rate": eval_stats['success_rate'],
+                "Key_Pickup_Rate": eval_stats['key_pickup_rate'],
+                "Door_Open_Rate": eval_stats['door_open_rate'],
+                "Mean_Reward": eval_stats['mean_reward'],
+                # se agente non risolve IN NESSUNA ENV_CONF corrente metti -1 = nel plot é strano -1 
+                # "Mean_Steps": eval_stats['mean_steps'] if eval_stats['mean_steps'] != float('inf') else -1
+                # meglio mettere Nan cosi c'é un gap nel plot e si capisce che non ha risolto nessuna
+                "Mean_Steps": eval_stats['mean_steps'] if eval_stats['mean_steps'] != float('inf') else np.nan 
+            })
+            #=================================================================================
+
+            # Update Best
             if mean_rew > self.best_reward:
                 self.best_reward = mean_rew
                 self.best_code = code
                 
-                if "deepseek-r1" in self.llm_model.model_name or "deepseek-r1:8b" in self.llm_model.model_name:
-                    model_name = "DeepSeekR1_8b"
-                elif "deepseek-v3.1" in self.llm_model.model_name or "deepseek-v3" in self.llm_model.model_name or "671b-cloud" in self.llm_model.model_name:
-                    model_name = "DeepSeek671b"
-                elif "phi3.5" in self.llm_model.model_name or "phi3_5" in self.llm_model.model_name or self.llm_model.model_name.startswith("phi3"):
-                    model_name = "Phi3_5"
-                elif "sonar-reasoning-pro" in self.llm_model.model_name.lower() or "sonar" in self.llm_model.model_name.lower():
-                    model_name = "Perplexity"
-                else:
-                    model_name = "UnknownModel"
-
-                if "DoorKey" in self.env_id:
-                    name_env = "DoorKey"+str(self.env_width)+"x"+str(self.env_height)
-                elif "Empty" in self.env_id:
-                    name_env = "Empty"+str(self.env_width)+"x"+str(self.env_height)
-                else:
-                    name_env = "UnknownEnv"
-
-                with open(f"BestRwdFunc_{name_env}_{model_name}.py", "w") as f:
+                with open(f"BestRwdFunc_{self.name_env}_{self.model_name}.py", "w") as f:
                     f.write(code)
+            
 
-            # 4. Feedback V2 VERSION
-
+            # Feedback Generation
             if err:
                 # --- CRITICAL FIX ---
                 # If the code crashed, the stats (0.0, -inf) are fake. 
@@ -547,14 +605,10 @@ class EurekaSearch:
             #in previous version the new prompt after the initial was only the feedback prompt body
             # giving that the interaction with the LLM is stateless (no chat conversation) we need to always add the context!
             current_prompt = context_prompt + "\n\n" + feedback_prompt_body
-
-
-            #[debug]
-            # print("- "*20)
-            # print("New Feedback prompt for LLM")
-            # print(current_prompt)
-            # print("-"*20)
-
+            
+        # Save and plot metrics at the end after ALL THE ITERATIONS!
+        tracker.save()
+        tracker.plot(x_label="Reflection Iteration") # must be specified that x-axis are not epoch but eureka reflection iterations
 
         #=============
         # AFTER EVALUATION RETURN CODE TO DO THE FINAL BIG RUN OVER THE BEST REWARD FUNCTION
@@ -602,25 +656,43 @@ class EurekaSearch:
             max_steps=final_train_max_steps  
         )()
 
-        # 2. Setup PPO with more epochs than the search phase
-        final_policy = PPO(
-            env=final_env,
-            gamma=0.99,
-            epsilon=0.2,
-            epochs=final_train_epochs, 
-            model_name=f"{self.pure_rl_baseline}_FINAL_BEST",
+        # 2. Setup PPO/RecurrentPPO 
+        if self.pure_rl_baseline == 'RecurrentPPO':
+             final_policy = RecurrentPPO(
+                env=final_env,
+                gamma=0.99,
+                epsilon=0.2,
+                epochs=final_train_epochs,
+                encode_dim=128,
+                hidden_dim=128,
+                sequence_length=32,
+                recurrence="lstm",
+                model_name=f"{self.pure_rl_baseline}_FINAL_",
+                save_pkl_model=True,
+                track_stats=True
+            )
+        else:
+            final_policy = PPO(
+                env=final_env,
+                gamma=0.99,
+                epsilon=0.2,
+                epochs=final_train_epochs, 
+                model_name=f"{self.pure_rl_baseline}_FINAL_",
 
-            save_pkl_model=True,  # NOW Save the final model
-            track_stats=True  # Track detailed stats for final model
-        )
+                save_pkl_model=True,  # NOW Save the final model
+                track_stats=True  # Track detailed stats for final model
+            )
 
-        final_policy.batch_size = 2048  # 4096 for 8x8 / 2048 # for 5x5
-        final_policy.rollout.iterations = 4096  # for 8x8 16384 / # for 5x5 4096
+        # use the passed batch size and rollout iterations
+        final_policy.batch_size = self.batch_size
+        final_policy.rollout.iterations = self.rollout_iterations
 
         # 3. Train
         final_policy.trainer(
-            early_stopping_threshold=None  # No early stopping for final training
-        )
+            early_stopping_threshold = 0.95,  # average ENV_RWD threshold for early stopping 
+            window_size = 10  # Number of epochs to average over
+        ) 
+        
         
         return final_policy
 

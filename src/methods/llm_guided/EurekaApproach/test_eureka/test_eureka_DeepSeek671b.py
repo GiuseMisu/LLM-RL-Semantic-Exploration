@@ -41,7 +41,10 @@ if __name__ == "__main__":
         training_epochs=70,  # numb of epochs to train the model with each candidate reward function
         train_max_steps= 250, # max steps per training episode
         num_eval_episodes=25, # numb of episodes to evaluate each candidate reward function
-        pure_rl_baseline=baseline_rl
+        pure_rl_baseline=baseline_rl,
+
+        batch_size=2048,           # 5x5 config
+        rollout_iterations=4096    # 5x5 config       
     )
 
     # comment out to run directly a given reward function best_code = eureka.find_best_RwdFunc()
