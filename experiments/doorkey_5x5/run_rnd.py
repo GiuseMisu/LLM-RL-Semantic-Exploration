@@ -2,6 +2,11 @@
 Train RND-PPO (Curiosity-Driven) on DoorKey-5x5 environment
 Final experimental comparison
 """
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+
 from experiments import (
     make_minigrid_env,
     evaluate_policy,

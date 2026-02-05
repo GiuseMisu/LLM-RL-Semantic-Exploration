@@ -2,6 +2,11 @@
 Train RecurrentPPO (with LSTM) on doorkey_8x8 environment
 Final experimental comparison
 """
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+
 from experiments import (
     make_minigrid_env,
     evaluate_policy,

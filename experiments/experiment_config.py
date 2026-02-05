@@ -16,7 +16,7 @@ ENV_CONFIGS = {
         "rollout_iterations": 4096,
         "max_steps": 250, #default
         "epochs": 50, #--> empty envs need less training
-        "early_stopping_threshold": 0.97,
+        "early_stopping_threshold": 0.96,
         "early_stopping_window": 10,
     },
     "empty_8x8": {
@@ -25,7 +25,7 @@ ENV_CONFIGS = {
         "rollout_iterations": 16384,
         "max_steps": 640, #default 
         "epochs": 70, #--> empty envs need less training
-        "early_stopping_threshold": 0.97,
+        "early_stopping_threshold": 0.96,
         "early_stopping_window": 10,
     },
     "doorkey_5x5": {
@@ -34,7 +34,7 @@ ENV_CONFIGS = {
         "rollout_iterations": 4096,
         "max_steps": 250, #default 
         "epochs": 200,
-        "early_stopping_threshold": 0.97,
+        "early_stopping_threshold": 0.96,
         "early_stopping_window": 10,
     },
     "doorkey_8x8": {
@@ -42,8 +42,8 @@ ENV_CONFIGS = {
         "batch_size": 4096,
         "rollout_iterations": 16384, 
         "max_steps": 640, #default
-        "epochs": 400,
-        "early_stopping_threshold": 0.97,
+        "epochs": 250,
+        "early_stopping_threshold": 0.96,
         "early_stopping_window": 10,
     },
 }
@@ -80,7 +80,7 @@ LLM_PARAMS = {
 EUREKA_PARAMS = {
     "reflection_iterations": 3,
     "training_epochs": 50,
-    "num_eval_episodes": 50,
+    "num_eval_episodes": 30,
 }
 
 EVALUATION_PARAMS = {
