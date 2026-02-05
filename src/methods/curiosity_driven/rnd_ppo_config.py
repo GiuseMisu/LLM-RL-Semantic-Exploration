@@ -1,11 +1,3 @@
-import os
-import warnings
-# ---  SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
-
 
 import torch
 from torch import nn
@@ -63,30 +55,12 @@ class RNDPPO(PPO):
                         model_name=model_name
                         )
 
-        #================Extract Env Type and Model Name For File Name================
-        self.env_type = "unknown"
-        if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
-            env_id = env.unwrapped.spec.id
-            size_match = re.search(r'(\d+)x(\d+)', env_id)
-            if size_match:
-                env_dimension = size_match.group(1) + 'x' + size_match.group(2)
-                if "empty" in env_id.lower() or "minigrid-empty" in env_id.lower() :
-                    self.env_type = "EMPTY_" + env_dimension
-                elif "door" in env_id.lower()  and "key" in env_id.lower()  or "doorkey" in env_id.lower() :
-                    self.env_type = "DOORKEY_" + env_dimension
-                else:
-                    print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
-                    self.env_type = "OTHER_" + env_dimension
-            else:
-                print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")
-        
-        self.model_name = model_name
-        #==============================================================================
+        self.env_type, self.model_name = self._parse_env_and_model_name(env, model_name)
 
         # RND feature dimension
         self.rnd_feature_dim = rnd_dim
         
-        # Target Network: Random, FROZEN (never trained)
+        # ---------------- Target Network: Random, FROZEN (never trained) ----------------
         # Produces deterministic random features for states
         self.rnd_target = MiniGridCNN(output_dim=self.rnd_feature_dim, device=self.device)
 
@@ -100,8 +74,10 @@ class RNDPPO(PPO):
         for param in self.rnd_target.parameters():
             param.requires_grad = False  # Freeze target network        
 
-        # Predictor Network: Trained to predict target network's output
+        # ---------------- Predictor Networ, NOT FROZER (Trained) ----------------
+        # Trained to predict target network's output
         self.rnd_predictor = MiniGridCNN(output_dim=self.rnd_feature_dim, device=self.device)
+
         # Initialize predictor
         for module in self.rnd_predictor.modules():
             if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
@@ -141,6 +117,28 @@ class RNDPPO(PPO):
 
         self.track_stats = track_stats
 
+    def _parse_env_and_model_name(self, env: gym.Env, model_name: str) -> tuple:
+        """
+        Returns (env_type, model_name).
+        """
+        env_type = "unknown"
+        if hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
+            env_id = env.unwrapped.spec.id
+            size_match = re.search(r'(\d+)x(\d+)', env_id)
+            if size_match:
+                env_dimension = size_match.group(1) + 'x' + size_match.group(2)
+                env_id_lower = env_id.lower()
+                if "empty" in env_id_lower or "minigrid-empty" in env_id_lower:
+                    env_type = "EMPTY_" + env_dimension
+                elif (("door" in env_id_lower and "key" in env_id_lower) or "doorkey" in env_id_lower):
+                    env_type = "DOORKEY_" + env_dimension
+                else:
+                    print(f"[WARNING] Unrecognized MiniGrid env type in env_id: {env_id}, defaulting to OTHER")
+                    env_type = "OTHER_" + env_dimension
+            else:
+                print(f"[WARNING] Could not parse env dimensions from env_id: {env_id}")
+        return env_type, model_name
+    
     def compute_intrinsic_reward(self, state: torch.Tensor) -> tuple:
         """
         Computes intrinsic reward

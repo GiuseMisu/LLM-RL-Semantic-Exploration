@@ -1,13 +1,5 @@
-from typing import Optional, Callable
-import os
+from typing import Optional
 import gymnasium as gym
-from gymnasium.envs.registration import register
-
-import warnings
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
 
 #PURE RL APPROACH NEEDS ImgObsWrapper
 from minigrid.wrappers import ImgObsWrapper
@@ -17,9 +9,6 @@ from src.methods.llm_guided.ScalarApproach.llm_reward_wrapper import LLMRewardWr
 
 # LLM EUREKA APPROACH WRAPPER
 from src.methods.llm_guided.EurekaApproach.eureka_wrapper import EurekaRewardWrapper     
-
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 def make_minigrid_env(
         env_id="MiniGrid-DoorKey-5x5-v0", 
@@ -91,13 +80,7 @@ def make_minigrid_env(
             # WITH ENV.UNWRAPPED YOU GET THE DICT OBS => NEED FOR LLM-GUIDED METHODS
             #==============================
             env = ImgObsWrapper(env)            
-            # WRAPPER: Monitor
-            # This wrapper records: Episode Reward, Episode Length and Time
-            # It writes to a file (monitor.csv) -> use later to generate graphs
-            # if log_dir is not None:
-            #     os.makedirs(log_dir, exist_ok=True)
-            #     log_path = os.path.join(log_dir, str(idx))
-            #     env = Monitor(env, filename=log_path)            
+        
         return env
 
     return _init

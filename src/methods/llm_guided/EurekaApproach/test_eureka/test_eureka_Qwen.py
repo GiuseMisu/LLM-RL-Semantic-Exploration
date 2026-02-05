@@ -1,11 +1,5 @@
-import os
-import warnings
-# ---  SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
 
+import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
@@ -18,7 +12,6 @@ from src.common.policy_evaluation import evaluate_policy
 if __name__ == "__main__":
 
     try:
-        # Initialize the client
         llm = Qwen3CoderClient(            
             temperature=0.1   # really low temp for qwen-coder
             )
@@ -27,7 +20,6 @@ if __name__ == "__main__":
         print(f"Setup Failed: {e}")
         sys.exit(1)
 
-    # Run Search
     baseline_rl = 'PPO' # 'PPO' or 'RecurrentPPO' 
     env_id = "MiniGrid-DoorKey-8x8-v0"
 

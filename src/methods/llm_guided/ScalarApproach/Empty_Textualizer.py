@@ -1,12 +1,5 @@
-import numpy as np
-import os
-import warnings
+
 from minigrid.core.constants import OBJECT_TO_IDX
-
-# --- 1. SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-
 
 DIRECTION_TO_TEXT = {0: "East", 1: "South", 2: "West", 3: "North"}
 

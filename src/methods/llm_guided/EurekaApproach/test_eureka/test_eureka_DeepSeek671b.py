@@ -1,11 +1,5 @@
-import os
-import warnings
-# ---  SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
 
+import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../../"))
 
