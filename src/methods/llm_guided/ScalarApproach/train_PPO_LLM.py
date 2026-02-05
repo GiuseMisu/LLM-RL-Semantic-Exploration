@@ -157,7 +157,7 @@ if __name__ == "__main__":
     
     # # === EXPERIMENT 2: LLM-Guided (Additive Rewards) ===
     policy_llm, env_llm = train_ppo_with_llm(
-        env_id="MiniGrid-DoorKey-5x5-v0",
+        env_id="MiniGrid-DoorKey-8x8-v0",
         use_llm=True,
         llm_backend='hermes', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
