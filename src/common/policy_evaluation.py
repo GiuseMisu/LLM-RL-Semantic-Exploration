@@ -1,5 +1,4 @@
 from src.common.visualization import save_frames_as_gif
-
 import torch
 from torch.nn import functional as F
 import re
@@ -34,7 +33,8 @@ def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_i
         
 
     episode_rewards = []
-    episode_lengths = []
+    episode_lengths = []    
+    episode_successes = []  # Track if episode truly succeeded (terminated, not truncated)
     all_frames = []  # Collect frames from all episodes
     episode_info = []  # Track which episode each frame belongs to
     
@@ -58,6 +58,7 @@ def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_i
         
         episode_rewards.append(total_reward)
         episode_lengths.append(steps)
+        episode_successes.append(done and not trunc)
                 
         print(f"Episode {episode+1}/{n_episodes}: Reward={total_reward:.2f}, Steps={steps}")
     
@@ -66,7 +67,7 @@ def evaluate_policy(env, policy, n_episodes=10, save_gif=True, gif_fps=10, gif_i
     std_reward = (sum((r - mean_reward)**2 for r in episode_rewards) / n_episodes)**0.5
     mean_length = sum(episode_lengths) / n_episodes
     std_length = (sum((l - mean_length)**2 for l in episode_lengths) / n_episodes)**0.5
-    success_rate = sum(1 for r in episode_rewards if r > 0) / n_episodes
+    success_rate = sum(episode_successes) / n_episodes
     
     stats = {
         'mean_reward': mean_reward,

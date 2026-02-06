@@ -2,14 +2,8 @@
 import os
 import time
 import sys
-import warnings
-
-# --- 1. SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-
 import numpy as np
-from minigrid.core.constants import OBJECT_TO_IDX, COLOR_TO_IDX
+from minigrid.core.constants import OBJECT_TO_IDX
 
 # Mappings
 IDX_TO_OBJECT = {v: k for k, v in OBJECT_TO_IDX.items()}

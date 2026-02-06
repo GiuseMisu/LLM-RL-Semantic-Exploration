@@ -1,9 +1,3 @@
-import os
-import warnings
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
 
 import sys
 sys.path.append('../../../') 
@@ -18,11 +12,6 @@ def main():
 
     env_id = "MiniGrid-DoorKey-8x8-v0"
     #env_id = "MiniGrid-DoorKey-8x8-v0"
-
-    #==============seed ti garantisce sempre steso env config ============
-    # NON USARE SEED DURING TRAINGING MA SOLO IN VAL SE VUOI VEDERE UNO SPECIFICO SCENARIO
-    #======================================================================
-    # in 5x5 seed = 0 è quello facile con porta tutto sopra / seed = 1 é quello difficile con porta in mezzo   
 
     env = make_minigrid_env(env_id=env_id, 
                             render_mode="rgb_array", 

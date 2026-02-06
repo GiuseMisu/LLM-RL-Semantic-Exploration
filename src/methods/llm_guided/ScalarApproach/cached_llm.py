@@ -20,7 +20,7 @@ class RobustCachedLLMClient(BaseLLMClient):
                  voting_samples=3, mode: str = None, max_reflection_attempts: int = 2):
         """
         Args:
-            real_llm_client: An instance of GeminiLLMClient, Phi35LLMClient, etc
+            real_llm_client: An instance of Phi35LLMClient, etc
             cache_path (str): File path to store the JSON cache
             voting_samples (int): How many times to query the LLM on a cache miss (3 or 5)
             max_reflection_attempts (int): Max times to re-query LLM if reward seems wrong
@@ -125,7 +125,7 @@ class RobustCachedLLMClient(BaseLLMClient):
                 "Provide the correct reward that is aligned with the SCORING GUIDELINES"
             )
         
-        if (goal_is_reachable or "dist=1" in goal_info) and proposed_reward < 0.6:
+        if (goal_is_reachable or "dist=1," in goal_info) and proposed_reward < 0.6:
             return (
                 "\n\n[CRITICAL REFLECTION]\n"
                 "CURRENT STATE: The Goal is very close (dist=1) or marked <REACHABLE>.\n"

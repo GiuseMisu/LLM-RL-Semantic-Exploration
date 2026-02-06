@@ -1,5 +1,5 @@
 """
-Train Eureka (LLM-Generated Reward Functions) with Qwen on DoorKey-8x8
+Train Eureka (LLM-Generated Reward Functions) with Qwen on DoorKey-16x16
 Final experimental comparison
 """
 
@@ -11,7 +11,7 @@ from experiments import (
     make_minigrid_env,
     evaluate_policy,
     ENV_CONFIGS,
-    EUREKA_PARAMS,
+    EUREKA_PARAMS_16x16,
     EVALUATION_PARAMS,
     move_experiment_files,
     EurekaSearch,
@@ -21,8 +21,8 @@ from experiments import (
 
 def main():
     # Load configuration
-    config = ENV_CONFIGS["doorkey_8x8"]
-    eureka_cfg = EUREKA_PARAMS
+    config = ENV_CONFIGS["doorkey_16x16"]
+    eureka_cfg = EUREKA_PARAMS_16x16
     
     # Initialize LLM client
     try:
@@ -36,7 +36,7 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"Starting Eureka Reward Function Search with Qwen")
-    print(f"Environment: DoorKey-8x8")
+    print(f"Environment: DoorKey-16x16")
     print(f"{'='*60}\n")
 
     # Initialize Eureka Search
@@ -95,7 +95,7 @@ def main():
     # Move all experiment files to results directories
     move_experiment_files(
         model_name="Eureka_Qwen",
-        environment="DOORKEY_8x8",
+        environment="DOORKEY_16x16",
         source_pattern="PPO_FINAL__",
         include_reward_function=True
     )
@@ -104,34 +104,3 @@ if __name__ == "__main__":
     main()
 
 
-
-# Episode 1/20: Reward=11.04, Steps=11
-# Episode 2/20: Reward=11.06, Steps=15
-# Episode 3/20: Reward=11.05, Steps=19
-# Episode 4/20: Reward=11.05, Steps=16
-# Episode 5/20: Reward=11.04, Steps=14
-# Episode 6/20: Reward=11.06, Steps=17
-# Episode 7/20: Reward=11.04, Steps=13
-# Episode 8/20: Reward=11.04, Steps=17
-# Episode 9/20: Reward=11.04, Steps=15
-# Episode 10/20: Reward=11.04, Steps=14
-# Episode 11/20: Reward=11.04, Steps=12
-# Episode 12/20: Reward=11.03, Steps=14
-# Episode 13/20: Reward=11.06, Steps=21
-# Episode 14/20: Reward=11.07, Steps=20
-# Episode 15/20: Reward=11.06, Steps=18
-# Episode 16/20: Reward=11.05, Steps=17
-# Episode 17/20: Reward=11.05, Steps=16
-# Episode 18/20: Reward=11.05, Steps=14
-# Episode 19/20: Reward=11.06, Steps=17
-# Episode 20/20: Reward=11.06, Steps=18
-
-# ==================================================
-# EVALUATION STATISTICS
-# ==================================================
-# Mean Reward:    11.049 +/- 0.010
-# Min Reward:     11.028
-# Max Reward:     11.071
-# Mean Length:    15.9 +/- 2.5 steps
-# Success Rate:   100.0% (20/20)
-# ==================================================

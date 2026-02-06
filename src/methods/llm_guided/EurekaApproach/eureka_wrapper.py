@@ -28,6 +28,7 @@ class EurekaRewardWrapper(gym.Wrapper):
             # Local scope for the function
             # Any variable LLM code defines ends up here
             local_scope = {}
+
             # Global scope with safe imports
             global_scope = {'np': np, 'math': math}
             
@@ -61,10 +62,8 @@ class EurekaRewardWrapper(gym.Wrapper):
         intrinsic_reward = self.reward_function(self.unwrapped)
 
         if intrinsic_reward is None: 
-            # print("[Eureka Wrapper Warning] Reward function returned None -> defaulting intrinsic_reward: 0.0")
-            # intrinsic_reward = 0.0            
-            # This is a soft error, we can handle it gracefully or raise it. 
-            # Usually better to raise so LLM fixes it.
+            # print("[Eureka Wrapper Warning] Reward function returned None -> defaulting intrinsic_reward: 0.0")         
+            # better to raise so LLM fixes it.
             raise ValueError("Reward function returned None")
 
         #if intrisic reward returned by the LLM-generated reward function is out of bounds
@@ -72,7 +71,6 @@ class EurekaRewardWrapper(gym.Wrapper):
             print(f"\n[WARNING Eureka Wrapper] Reward function returned out-of-bounds value {intrinsic_reward}\n")
             ### do not clip it is too invasive intrinsic_reward = max(-0.1, min(1.0, intrinsic_reward))
     
-            
         #keep track 
         self.cumulative_intrinsic_reward += float(intrinsic_reward)
 

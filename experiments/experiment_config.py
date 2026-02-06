@@ -16,7 +16,7 @@ ENV_CONFIGS = {
         "rollout_iterations": 4096,
         "max_steps": 250, #default
         "epochs": 50, #--> empty envs need less training
-        "early_stopping_threshold": 0.96,
+        "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
     "empty_8x8": {
@@ -25,16 +25,25 @@ ENV_CONFIGS = {
         "rollout_iterations": 16384,
         "max_steps": 640, #default 
         "epochs": 70, #--> empty envs need less training
-        "early_stopping_threshold": 0.96,
+        "early_stopping_threshold": 0.955,
+        "early_stopping_window": 10,
+    },
+    "empty_16x16": {
+        "env_id": "MiniGrid-Empty-16x16-v0",
+        "batch_size": 4096,
+        "rollout_iterations": 16384,
+        "max_steps": 640, #default 
+        "epochs": 100, #--> empty envs need less training
+        "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
     "doorkey_5x5": {
-        "env_id": "MiniGrid-DoorKey-5x5-v0",
+        "env_id": "MiniGrid-DoorKey-16x16-v0",
         "batch_size": 2048,
         "rollout_iterations": 4096,
         "max_steps": 250, #default 
         "epochs": 200,
-        "early_stopping_threshold": 0.96,
+        "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
     "doorkey_8x8": {
@@ -43,7 +52,24 @@ ENV_CONFIGS = {
         "rollout_iterations": 16384, 
         "max_steps": 640, #default
         "epochs": 250,
-        "early_stopping_threshold": 0.96,
+        "early_stopping_threshold": 0.955,
+        "early_stopping_window": 10,
+    },
+    "doorkey_16x16": {
+        "env_id": "MiniGrid-DoorKey-16x16-v0",
+
+        #NOTE: to try bigger setup
+        "batch_size": 8192,  # Larger env needs more samples
+        "rollout_iterations": 32768,  # More exploration
+
+        # not enough 
+        # "batch_size": 4096,
+        # "rollout_iterations": 16384, 
+
+
+        "max_steps": 1024, #default
+        "epochs": 300,
+        "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
 }
@@ -80,6 +106,12 @@ LLM_PARAMS = {
 EUREKA_PARAMS = {
     "reflection_iterations": 3,
     "training_epochs": 50,
+    "num_eval_episodes": 30,
+}
+
+EUREKA_PARAMS_16x16 = {
+    "reflection_iterations": 3,
+    "training_epochs": 120,
     "num_eval_episodes": 30,
 }
 

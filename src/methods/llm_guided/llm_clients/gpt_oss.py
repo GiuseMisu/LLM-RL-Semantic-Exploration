@@ -47,18 +47,18 @@ class GPT_OSS_Client(BaseLLMClient):
                     messages=messages
                 )
 
-            #print("THE RAW RESPONSE FROM DEEPSEEK IS AS SUCH:")
+            #print("THE RAW RESPONSE FROM GPT IS AS SUCH:")
             #print(response)
 
             if 'message' in response and 'content' in response['message']:
                 raw_text = response['message']['content']
                 
-                if self.reasoning == True and "thinking" in response["message"] and response["message"]["thinking"]:
-                    # [debug] print CoT
-                    print("\n" + "-"*40)
-                    print("CoT:")
-                    print(response['message']['thinking'])
-                    print("="*40 + "\n")
+                # if self.reasoning == True and "thinking" in response["message"] and response["message"]["thinking"]:
+                #     # [debug] print CoT
+                #     print("\n" + "-"*40)
+                #     print("CoT:")
+                #     print(response['message']['thinking'])
+                #     print("="*40 + "\n")
 
                 return raw_text
             

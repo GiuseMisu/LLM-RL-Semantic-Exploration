@@ -1,12 +1,4 @@
 import os
-import warnings
-# ---  SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
-
-
 import re
 import numpy as np
 import torch
@@ -14,11 +6,11 @@ import traceback
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
+
+from src.common.metrics import MetricsTracker  
 from src.common.env_setup import make_minigrid_env
 from src.methods.pure_rl.ppo.ppo_config import PPO, RecurrentPPO
 from src.methods.llm_guided.EurekaApproach.eureka_prompt_doorkey import EUREKA_INITIAL_PROMPT_DOORKEY, EUREKA_FEEDBACK_PROMPT_TEMPLATE_DOORKEY, MINIGRID_API_CONTEXT_DOORKEY
-from src.common.metrics import MetricsTracker  
-
 
 
 class EurekaSearch:
@@ -108,10 +100,6 @@ class EurekaSearch:
             return "DeepSeekR1_8b"
         elif "deepseek-v3.1" in llm_name or "deepseek-v3" in llm_name or "671b-cloud" in llm_name:
             return "DeepSeek671b"
-        elif "phi3.5" in llm_name or "phi3_5" in llm_name or self.llm_model.model_name.startswith("phi3"):
-            return "Phi3_5"
-        elif "sonar-reasoning-pro" in llm_name or "sonar" in llm_name:
-            return "Perplexity"
         elif "gpt-oss" in llm_name:
             return "GPT-OSS"
         elif "qwen" in llm_name:
@@ -169,7 +157,7 @@ class EurekaSearch:
                     gamma=0.99,
                     epsilon=0.2,
                     epochs=self.training_epochs,
-                    encode_dim=128,    # CNN output
+                    encode_dim=128,     # CNN output
                     hidden_dim=64,      # LSTM hidden size
                     recurrence="lstm",
                     model_name=self.pure_rl_baseline,
@@ -242,38 +230,8 @@ class EurekaSearch:
                     policy.reset_hidden()
 
                 while not done:
-                    # this version does not work due to -> .to() function in PPO.forward
-                    # action, _ = policy.get_act(obs)
-                    # obs, reward, terminated, truncated, info = env.step(action)
-
-                    # Robustly get device, convert numpy obs -> tensor, add batch dim
-                    # device = getattr(policy, "device", next(policy.parameters()).device)
-                    # state = torch.from_numpy(obs).float().unsqueeze(0).to(device)
-                    # # Policy output (could be logits, action tensor, or (action, value))
-                    # policy_out = policy.get_act(state)
-
-                    # # Normalize to single tensor that represents action/logits
-                    # if isinstance(policy_out, tuple):
-                    #     out_tensor = policy_out[0]
-                    # else:
-                    #     out_tensor = policy_out
-
-                    # # If output logits/probs (last dim > 1) -> argmax, else treat as action index
-                    # if isinstance(out_tensor, torch.Tensor):
-                    #     # If shape is [Batch, Actions] (e.g., [1, 7]), it's logits -> use argmax
-                    #     if out_tensor.dim() >= 2 and out_tensor.shape[-1] > 1:
-                    #         action_tensor = torch.argmax(out_tensor, dim=-1)
-                    #     else:
-                    #         # It's already an index
-                    #         action_tensor = out_tensor.squeeze()
-                        
-                    #     arr = action_tensor.detach().cpu().numpy().reshape(-1) # Safe conversion to python int
-                    #     action = int(arr[0])
-                    # else:
-                    #     # Fallback if policy returns a raw int/float
-                    #     action = int(out_tensor)
-
                     state_tensor = torch.FloatTensor(obs).unsqueeze(0).to(policy.device)
+                    
                     with torch.no_grad():
                         # Both PPO and RecurrentPPO have get_act() returning (action_logits, value)
                         # RecurrentPPO internally manages its hidden state
@@ -689,7 +647,7 @@ class EurekaSearch:
 
         # 3. Train
         final_policy.trainer(
-            early_stopping_threshold = 0.95,  # average ENV_RWD threshold for early stopping 
+            early_stopping_threshold = 0.951,  # average ENV_RWD threshold for early stopping 
             window_size = 10  # Number of epochs to average over
         ) 
         

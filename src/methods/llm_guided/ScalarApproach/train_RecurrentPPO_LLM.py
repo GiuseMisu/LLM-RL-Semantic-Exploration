@@ -6,13 +6,6 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
 
-import warnings
-# ---  SILENCE WARNINGS ---
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=r"pygame\.pkgdata")
-
 import torch
 from src.common.env_setup import make_minigrid_env
 from src.methods.pure_rl.ppo.ppo_config import PPO, RecurrentPPO
@@ -26,14 +19,15 @@ from src.methods.llm_guided.ScalarApproach.Empty_Textualizer import get_EMPTY_de
 
 # Choose LLM Client 
 from src.methods.llm_guided.llm_clients.phi3_5 import Phi35LLMClient
-# from src.methods.llm_guided.gemini import GeminiLLMClient
-
+from src.methods.llm_guided.llm_clients.deepseek_r1 import DeepSeekLLMClient
+from src.methods.llm_guided.llm_clients.hermes3 import HermesLLMClient
+from src.methods.llm_guided.llm_clients.DeepSeek671b import DeepSeekCloud671b_Client
 
 
 def train_ppo_with_llm(
     env_id="MiniGrid-DoorKey-5x5-v0",
     use_llm=True,
-    llm_backend='phi',  # 'phi' or 'gemini'
+    llm_backend='phi',  # 'phi'
     llm_weight=1.0,
     epochs=1000,
     max_steps=250,
@@ -72,9 +66,17 @@ def train_ppo_with_llm(
         # Initialize LLM
         if llm_backend == 'phi':
             real_client = Phi35LLMClient(system_prompt=system_prompt)
-        elif llm_backend == 'gemini':
-            from src.methods.llm_guided.llm_clients.gemini import GeminiLLMClient
-            real_client = GeminiLLMClient(system_prompt=system_prompt)
+        elif llm_backend == 'deepseek':
+            real_client = DeepSeekLLMClient(system_prompt=system_prompt)  
+        elif llm_backend == 'deepseek671b':
+            real_client = DeepSeekCloud671b_Client(system_prompt=system_prompt, 
+                                                   reasoning=True,
+                                                   temperature=0.3)
+        elif llm_backend == 'hermes':
+            real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
+        elif llm_backend == 'gpt':
+            from src.methods.llm_guided.llm_clients.gpt_oss import GPT_OSS_Client
+            real_client = GPT_OSS_Client(system_prompt=system_prompt, reasoning=True, temperature=0.3)
         else:
             raise ValueError(f"Unknown LLM backend: {llm_backend}")
         
