@@ -165,5 +165,5 @@ if __name__ == "__main__":
         max_steps=600,
         verbose=True, 
         voting_samples=3,
-        load=True
+        load=False
     )
