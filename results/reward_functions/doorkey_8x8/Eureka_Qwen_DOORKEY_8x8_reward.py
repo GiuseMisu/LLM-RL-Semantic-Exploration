@@ -23,7 +23,7 @@ def compute_reward(env):
                 elif obj.type == 'door' and obj.is_locked:
                     door_pos = (x, y)
                     dist = abs(agent_x - x) + abs(agent_y - y)
-                    if dist < min_dist_to_key:
+                    if dist < min_dist_to_door:
                         min_dist_to_door = dist
                 elif obj.type == 'goal':
                     goal_pos = (x, y)

@@ -647,7 +647,7 @@ class EurekaSearch:
 
         # 3. Train
         final_policy.trainer(
-            early_stopping_threshold = 0.951,  # average ENV_RWD threshold for early stopping 
+            early_stopping_threshold = 0.955,  # average ENV_RWD threshold for early stopping 
             window_size = 10  # Number of epochs to average over
         ) 
         

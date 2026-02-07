@@ -17,20 +17,33 @@ def save_frames_as_gif(frames, path='./', filename='Policy.gif', fps=10, interva
     # figure size with extra space for title
     frame_width = frames[0].shape[1] / 72.0
     frame_height = frames[0].shape[0] / 72.0
-    title_height = 0.5  # Extra height for title
+    title_height = 0.8  # Extra height for title
     
-    plt.figure(figsize=(frame_width, frame_height + title_height), dpi=356) #dpi = 144 for better quality
+    total_height = frame_height + title_height
+    
+    fig = plt.figure(figsize=(frame_width, total_height), dpi=72) #dpi = 144 for better quality
     
     # Create subplot with space for title
-    ax = plt.subplot(111)
-    ax.set_position([0, 0, 1, frame_height / (frame_height + title_height)])  # Bottom portion for image
+    # ax = plt.subplot(111)
+    # ax.set_position([0, 0, 1, frame_height / (frame_height + title_height)])  # Bottom portion for image
     
+    image_height_ratio = frame_height / total_height
+    ax = plt.subplot(111)
+    ax.set_position([0, 0, 1, image_height_ratio])
+
     patch = plt.imshow(frames[0])
     plt.axis('off')
     
-    # Add title in the top white space
-    title_text = plt.figtext(0.5, 0.95, '', ha='center', va='top', 
-                            fontsize=14, fontweight='bold', color='black')
+    # # Add title in the top white space
+    # title_text = plt.figtext(0.5, 0.95, '', ha='center', va='top', 
+    #                         fontsize=14, fontweight='bold', color='black')
+    # Position title in the white space above the image
+    # Use figure coordinates where the title should be at the top
+    # Place it at y position that's just above the image
+    title_y = image_height_ratio + (1 - image_height_ratio) / 2
+    title_text = plt.figtext(0.5, title_y, '', ha='center', va='center', 
+                            fontsize=16, fontweight='bold', color='black')
+
 
     def animate(i):
         patch.set_data(frames[i])        
