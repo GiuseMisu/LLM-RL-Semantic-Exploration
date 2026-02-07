@@ -24,8 +24,8 @@ class GPT_OSS_Client(BaseLLMClient):
         try:
             
             llm_options = {
-                           'temperature': self.temperature #,
-                            #'num_ctx': 1024 #4096 # 8192                       
+                           'temperature': self.temperature,
+                           "top_p": 0.9                     
                           }
             
             messages = [

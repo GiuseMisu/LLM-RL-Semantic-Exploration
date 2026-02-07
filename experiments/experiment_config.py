@@ -19,24 +19,16 @@ ENV_CONFIGS = {
         "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
-    "empty_8x8": {
-        "env_id": "MiniGrid-Empty-8x8-v0",
-        "batch_size": 4096,
-        "rollout_iterations": 16384,
-        "max_steps": 640, #default 
-        "epochs": 70, #--> empty envs need less training
-        "early_stopping_threshold": 0.955,
-        "early_stopping_window": 10,
-    },
     "empty_16x16": {
         "env_id": "MiniGrid-Empty-16x16-v0",
         "batch_size": 4096,
         "rollout_iterations": 16384,
-        "max_steps": 640, #default 
-        "epochs": 100, #--> empty envs need less training
+        "max_steps": 1024, #default 
+        "epochs": 250, #--> empty envs need less training
         "early_stopping_threshold": 0.955,
         "early_stopping_window": 10,
     },
+    
     "doorkey_5x5": {
         "env_id": "MiniGrid-DoorKey-16x16-v0",
         "batch_size": 2048,
@@ -61,15 +53,9 @@ ENV_CONFIGS = {
         #NOTE: to try bigger setup
         "batch_size": 8192,  # Larger env needs more samples
         "rollout_iterations": 32768,  # More exploration
-
-        # not enough 
-        # "batch_size": 4096,
-        # "rollout_iterations": 16384, 
-
-
         "max_steps": 1024, #default
         "epochs": 300,
-        "early_stopping_threshold": 0.955,
+        "early_stopping_threshold": 0.96,
         "early_stopping_window": 10,
     },
 }
@@ -111,7 +97,7 @@ EUREKA_PARAMS = {
 
 EUREKA_PARAMS_16x16 = {
     "reflection_iterations": 3,
-    "training_epochs": 120,
+    "training_epochs": 200,
     "num_eval_episodes": 30,
 }
 
