@@ -1,5 +1,5 @@
 """
-Train Eureka (LLM-Generated Reward Functions) with GPT on DoorKey-16x16
+Train Eureka (LLM-Generated Reward Functions) with DeepSeek on DoorKey-16x16
 Final experimental comparison
 """
 
@@ -15,7 +15,7 @@ from experiments import (
     EVALUATION_PARAMS,
     move_experiment_files,
     EurekaSearch,
-    GPT_OSS_Client
+    DeepSeekCloud671b_Client
 )
 
 def main():
@@ -25,9 +25,9 @@ def main():
     
     # Initialize LLM client
     try:
-        llm = GPT_OSS_Client(
+        llm = DeepSeekCloud671b_Client(
             reasoning=True, 
-            temperature=0.1 #more deterministic        
+            temperature=0.6   # for reasoning model is better a bit higher temp   
             )
         print(f"\nInitialized LLM: {llm.model_name}")
     except Exception as e:
@@ -35,7 +35,7 @@ def main():
         sys.exit(1)
 
     print(f"\n{'='*60}")
-    print(f"Starting Eureka Reward Function Search with GPT-OSS")
+    print(f"Starting Eureka Reward Function Search with DeepSeek")
     print(f"Environment: DoorKey-16x16")
     print(f"{'='*60}\n")
 
@@ -93,23 +93,13 @@ def main():
     )
 
     # Move all experiment files to results directories
-    move_experiment_files(
-        model_name="Eureka_GPT_OSS",
-        environment="DOORKEY_16x16",
-        source_pattern="PPO_FINAL__",
-        include_reward_function=True
-    )
+    # move_experiment_files(
+    #     model_name="Eureka_GPT_OSS",
+    #     environment="DOORKEY_16x16",
+    #     source_pattern="PPO_FINAL__",
+    #     include_reward_function=True
+    # )
     
 if __name__ == "__main__":
     main()
 
-
-# ==================================================
-# EVALUATION STATISTICS
-# ==================================================
-# Mean Reward:    10.672 +/- 2.112
-# Min Reward:     1.468
-# Max Reward:     11.214
-# Mean Length:    99.3 +/- 212.8 steps
-# Success Rate:   95.0% (19/20)
-# ==================================================
