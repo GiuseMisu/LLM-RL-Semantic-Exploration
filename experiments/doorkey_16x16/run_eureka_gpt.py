@@ -83,7 +83,7 @@ def main():
         max_steps=config["max_steps"]
     )()
 
-    final_policy.eval()
+    #final_policy.eval()
     
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(
@@ -104,3 +104,12 @@ if __name__ == "__main__":
     main()
 
 
+# ==================================================
+# EVALUATION STATISTICS
+# ==================================================
+# Mean Reward:    10.672 +/- 2.112
+# Min Reward:     1.468
+# Max Reward:     11.214
+# Mean Length:    99.3 +/- 212.8 steps
+# Success Rate:   95.0% (19/20)
+# ==================================================

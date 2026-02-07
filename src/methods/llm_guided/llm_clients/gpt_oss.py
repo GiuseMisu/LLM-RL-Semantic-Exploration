@@ -2,7 +2,6 @@ import os
 import sys
 import ollama
 
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient
 from src.methods.llm_guided.ScalarApproach.scalar_prompts import DOOR_KEY_SYSTEM_PROMPT, EMPTY_SYSTEM_PROMPT
