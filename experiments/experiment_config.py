@@ -84,6 +84,12 @@ RND_PARAMS = {
     "rnd_dim": 128,
 }
 
+RND_PARAMS_16x16 = {
+    "gamma_intrinsic": 0.99,
+    "intrinsic_reward_coeff": 0.015,  # 3x higher than smaller env
+    "rnd_dim": 128,
+}
+
 LLM_PARAMS = {
     "llm_weight": 1.0,  # can vary in ablation studies
     "voting_samples": 3,

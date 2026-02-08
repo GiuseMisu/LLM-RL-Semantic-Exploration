@@ -13,7 +13,7 @@ from experiments import (
     RNDPPO,
     ENV_CONFIGS,
     SHARED_PPO_PARAMS,
-    RND_PARAMS,
+    RND_PARAMS_16x16,
     EVALUATION_PARAMS,
     move_experiment_files
 )
@@ -38,7 +38,7 @@ def main():
         model_name="RNDPPO",
         track_stats=True,
         **SHARED_PPO_PARAMS,  # gamma, epsilon
-        **RND_PARAMS  # gamma_intrinsic, intrinsic_reward_coeff, rnd_dim
+        **RND_PARAMS_16x16  # gamma_intrinsic, intrinsic_reward_coeff, rnd_dim
     )
     
     # Set environment-specific parameters
@@ -79,3 +79,14 @@ def main():
         
 if __name__ == "__main__":
     main()
+
+
+# ==================================================
+# EVALUATION STATISTICS
+# ==================================================
+# Mean Reward:    0.000 +/- 0.000
+# Min Reward:     0.000
+# Max Reward:     0.000
+# Mean Length:    1024.0 +/- 0.0 steps
+# Success Rate:   0.0% (0/20)
+# ==================================================
