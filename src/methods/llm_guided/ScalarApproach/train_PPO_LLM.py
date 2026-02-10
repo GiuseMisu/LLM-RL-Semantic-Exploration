@@ -73,7 +73,7 @@ def train_ppo_with_llm(
                                                    reasoning=True,
                                                    temperature=0.3)
         elif llm_backend == 'hermes':
-            real_client = HermesLLMClient(debug=False, system_prompt=system_prompt)
+            real_client = HermesLLMClient(system_prompt=system_prompt)
         elif llm_backend == 'gpt':
             from src.methods.llm_guided.llm_clients.gpt_oss import GPT_OSS_Client
             real_client = GPT_OSS_Client(system_prompt=system_prompt, reasoning=True, temperature=0.3)
@@ -150,11 +150,10 @@ if __name__ == "__main__":
     # # === EXPERIMENT 2: LLM-Guided (Additive Rewards) ===
     policy_llm, env_llm = train_ppo_with_llm(
         env_id="MiniGrid-DoorKey-8x8-v0",
-        env_id="MiniGrid-DoorKey-8x8-v0",
         use_llm=True,
         llm_backend='hermes', # 'phi' or 'gemini' or 'deepseek' or 'deepseek671b'
         llm_weight=1.0, 
-        epochs=500,
+        epochs=2,
         max_steps=600,
         verbose=True, 
         voting_samples=3,
