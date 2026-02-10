@@ -13,7 +13,6 @@ from experiments import (
     ENV_CONFIGS,
     EUREKA_PARAMS_16x16,
     EVALUATION_PARAMS,
-    move_experiment_files,
     EurekaSearch,
     # NOTE : don't need a real LLM client, we're reusing a saved reward function
 )
@@ -87,13 +86,6 @@ def main():
         #**EVALUATION_PARAMS
     )
 
-    #Move all experiment files to results directories
-    move_experiment_files(
-        model_name="Eureka_Qwen",
-        environment="DOORKEY_16x16",
-        source_pattern="PPO_FINAL__",
-        include_reward_function=False #do not move the reward function file since it's shared with the 8x8 experiment
-    )
     
 if __name__ == "__main__":
     main()

@@ -13,7 +13,6 @@ from experiments import (
     ENV_CONFIGS,
     EUREKA_PARAMS_16x16,
     EVALUATION_PARAMS,
-    move_experiment_files,
     EurekaSearch,
     GPT_OSS_Client
 )
@@ -92,13 +91,6 @@ def main():
         **EVALUATION_PARAMS
     )
 
-    # Move all experiment files to results directories
-    move_experiment_files(
-        model_name="Eureka_GPT_OSS",
-        environment="DOORKEY_16x16",
-        source_pattern="PPO_FINAL__",
-        include_reward_function=True
-    )
     
 if __name__ == "__main__":
     main()
