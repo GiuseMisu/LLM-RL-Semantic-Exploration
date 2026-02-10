@@ -14,7 +14,6 @@ from experiments import (
     SHARED_PPO_PARAMS,
     LLM_PARAMS,
     EVALUATION_PARAMS,
-    move_experiment_files,
     # Scalar approach components
     RobustCachedLLMClient,
     DOOR_KEY_SYSTEM_PROMPT,
@@ -121,11 +120,6 @@ def main():
         **EVALUATION_PARAMS
     )
 
-    # Move experiment files to results directories
-    move_experiment_files(
-        model_name="Scalar_GPT",
-        environment="DOORKEY_8x8"
-    )
 
 
 if __name__ == "__main__":

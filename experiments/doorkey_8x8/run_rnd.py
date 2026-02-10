@@ -14,8 +14,7 @@ from experiments import (
     ENV_CONFIGS,
     SHARED_PPO_PARAMS,
     RND_PARAMS,
-    EVALUATION_PARAMS,
-    move_experiment_files
+    EVALUATION_PARAMS
 )
 
 
@@ -74,8 +73,6 @@ def main():
         **EVALUATION_PARAMS
     )
 
-    # Move experiment files to appropriate directories
-    move_experiment_files("RNDPPO", "DOORKEY_8x8")
-        
+     
 if __name__ == "__main__":
     main()

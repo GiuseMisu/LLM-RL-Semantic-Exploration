@@ -13,8 +13,7 @@ from experiments import (
     PPO,
     ENV_CONFIGS,
     SHARED_PPO_PARAMS,
-    EVALUATION_PARAMS,
-    move_experiment_files
+    EVALUATION_PARAMS
 )
 
 
@@ -70,9 +69,6 @@ def main():
                             policy, 
                             **EVALUATION_PARAMS
                             )
-
-    # Move experiment files to appropriate directories
-    move_experiment_files("PPO", "EMPTY_16x16")
 
         
 if __name__ == "__main__":

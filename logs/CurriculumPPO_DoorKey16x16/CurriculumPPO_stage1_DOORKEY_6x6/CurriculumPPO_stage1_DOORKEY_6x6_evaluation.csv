@@ -1,0 +1,2 @@
+n_episodes,mean_reward,std_reward,min_reward,max_reward,mean_length,std_length,success_rate
+30,0.9343,0.1736,0.0000,0.9775,24.97,62.26,0.9667

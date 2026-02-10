@@ -11,7 +11,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
 from src.common.env_setup import make_minigrid_env
 from src.common.policy_evaluation import evaluate_policy
 from experiments.experiment_config import ENV_CONFIGS, SHARED_PPO_PARAMS, RECURRENT_PARAMS, RND_PARAMS, RND_PARAMS_16x16, EUREKA_PARAMS, EUREKA_PARAMS_16x16, LLM_PARAMS, EVALUATION_PARAMS
-from experiments.experiment_utils import move_experiment_files
 
 # PPO variants
 from src.methods.pure_rl.ppo.ppo_config import PPO, RecurrentPPO
@@ -42,7 +41,6 @@ __all__ = [
     'EUREKA_PARAMS_16x16',
     'LLM_PARAMS',
     'EVALUATION_PARAMS',
-    'move_experiment_files',
     'PPO',
     'RecurrentPPO',
     'RNDPPO',
