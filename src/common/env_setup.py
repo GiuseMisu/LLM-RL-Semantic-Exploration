@@ -92,27 +92,12 @@ if __name__ == "__main__":
     env_id_empty = "MiniGrid-Empty-5x5-v0" 
     print(f"--- Inspecting: {env_id_empty} ---")
     
-    # Create one instance
+    # Create one env instance
     test_env = make_minigrid_env(env_id=env_id_empty, render_mode="human")()
     obs, info = test_env.reset()
     
     print(f"Observation Shape: {obs.shape}")
     print(f"Action Space:      {test_env.action_space}")
-    
-    # =======> for the minigrid doorkey env
-    # print("""Action space: Discrete(7)
-    #         0 = Turn Left       # Rotate 90° counterclockwise
-    #         1 = Turn Right      # Rotate 90° clockwise
-    #         2 = Move Forward    # Move one cell in the direction you're facing
-    #         3 = Pick Up         # Pick up an object (like the key)
-    #         4 = Drop            # Drop the object you're carrying
-    #         5 = Toggle          # Interact with objects (open/close doors)
-    #         6 = Done            # Signal task completion (rarely used)""")
-    # print("\n--- Understanding the Input (7x7x3) ---")
-    # print("The observation is a 7x7 grid centered around the agent, with 3 channels of info:")
-    # print("Channel 0 (Object IDs): What object is in each cell (2 = Floor / 4 = Keys / ...)")
-    # print("Channel 1 (Colors):     The color of each object (0=Red, 1=Green, 2=Blue, ...)")
-    # print("Channel 2 (State):      The state of objects 0=Open door, 1=Closed door, 2=Locked door")
     
     for step in range(5):
         action = test_env.action_space.sample()  # Random action

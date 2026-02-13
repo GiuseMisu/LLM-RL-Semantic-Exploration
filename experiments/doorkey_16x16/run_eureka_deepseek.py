@@ -81,8 +81,6 @@ def main():
         eureka_reward_code=best_code,
         max_steps=config["max_steps"]
     )()
-
-    #final_policy.eval()
     
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(

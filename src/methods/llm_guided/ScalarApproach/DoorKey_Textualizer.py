@@ -17,7 +17,6 @@ def sanitize(value):
         return tuple(sanitize(x) for x in value)
     return value
 
-# --- NEW HELPER: CALCULATE DIRECTION ---
 def get_relative_direction(agent_pos, agent_dir, target_pos):
     """
     Returns: 'Front', 'Left', 'Right', 'Behind' or 'Here'

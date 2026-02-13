@@ -21,7 +21,6 @@ def main():
     print("\n=========== TRAINING PHASE===========\n")
     # Define the Policy
     policy = RNDPPO(env = env, 
-                          # done automatically inside the code output_dim= 4, 
                           epochs = 5, #100
                           gamma = 0.99, 
                           gamma_intrinsic = 0.99, # late (high value) or early (lower value) exploration
@@ -29,7 +28,7 @@ def main():
                           model_name="RNDPPO", 
 
                           intrinsic_reward_coeff=0.01, # if high helps to explore more => more weight to intrinsic reward then env reward
-                                                      # if low  helps to exploit more => more weight to env reward
+                                                       # if low  helps to exploit more => more weight to env reward
                           
                           track_stats=False
                           )
@@ -53,12 +52,10 @@ def main():
                                  max_steps=50
                                  )()
 
-    policy.eval()
-    
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(eval_env, 
                             policy, 
-                            n_episodes=10 # evaluation over 10 episodes
+                            n_episodes=10 
                             )
     
 

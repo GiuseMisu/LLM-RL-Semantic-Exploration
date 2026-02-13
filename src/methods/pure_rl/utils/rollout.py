@@ -15,18 +15,11 @@ class Rollout():
         self.iterations = iterations #Number of steps to collect per rollout
         self.max_episode_len = 9999 # PLACEHOLDER
 
-        # if self.agent.rollout != self:
-        #     raise Exception("Rollout's agent's rollout must be same as rollout")
-
 
     def calculate_returns(self, rewards : torch.Tensor, indexes : list) -> torch.Tensor :
         with torch.no_grad():
             G = torch.zeros_like(rewards)
             
-            # discounts = torch.from_numpy(np.power(self.agent.gamma, np.arange(len(rewards))))
-            # for t in range(len(rewards)):
-            #     G[t] = (rewards[t:]*discounts[:len(rewards)-t]).sum()
-
             start = 0
             for i in indexes:
                 l = i-start+1 # episode length
@@ -57,21 +50,6 @@ class Rollout():
         
         return advantages
     
-    # FIXME: Is this even different from the two above? 
-    def calculate_advantages_GAE(self, rewards : torch.Tensor, values : torch.Tensor) -> torch.Tensor :
-        advantages = torch.zeros_like(values)
-        last_advantage = 0
-        last_value = values[-1].item()
-        with torch.no_grad():
-            for t in reversed(range(values.shape[0])):
-                delta = rewards[t] + self.agent.gamma * last_value - values[t]
-                last_advantage = delta + self.agent.gamma * self.agent._lambda * last_advantage
-                advantages[t] = last_advantage
-                last_value = values[t]                
-
-        return advantages
-
-
     def forward_pass(self):
         states, actions, log_probs, values, rewards, done = [], [], [], [], [], False
 

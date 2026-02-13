@@ -23,10 +23,6 @@ def save_frames_as_gif(frames, path='./', filename='Policy.gif', fps=10, interva
     
     fig = plt.figure(figsize=(frame_width, total_height), dpi=72) #dpi = 144 for better quality
     
-    # Create subplot with space for title
-    # ax = plt.subplot(111)
-    # ax.set_position([0, 0, 1, frame_height / (frame_height + title_height)])  # Bottom portion for image
-    
     image_height_ratio = frame_height / total_height
     ax = plt.subplot(111)
     ax.set_position([0, 0, 1, image_height_ratio])
@@ -43,7 +39,6 @@ def save_frames_as_gif(frames, path='./', filename='Policy.gif', fps=10, interva
     title_y = image_height_ratio + (1 - image_height_ratio) / 2
     title_text = plt.figtext(0.5, title_y, '', ha='center', va='center', 
                             fontsize=16, fontweight='bold', color='black')
-
 
     def animate(i):
         patch.set_data(frames[i])        

@@ -68,7 +68,7 @@ def main():
     final_policy.load()
 
     # # Phase 3: Evaluation
-    # print("\n=========== EVALUATION PHASE ===========\n")
+    print("\n=========== EVALUATION PHASE ===========\n")
     eval_env = make_minigrid_env(
         env_id=config["env_id"],
         render_mode="rgb_array",

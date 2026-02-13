@@ -2,7 +2,6 @@ import os
 import sys
 import ollama
 
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../../"))
 
 from src.methods.llm_guided.llm_clients.base_client import BaseLLMClient

@@ -632,7 +632,6 @@ class RecurrentPPO(PPO):
                 new_log_probs = dist.log_prob(batch_actions_flat).view(curr_batch, seq_len)
                 entropy = dist.entropy().view(curr_batch, seq_len)
                 
-
                 #================ [IMP] Masked Loss Computation ====================
                 #Only valid (non-padded) timesteps contribute to the loss
                 # Apply mask to losses-> important for ignore padded parts (not real data)

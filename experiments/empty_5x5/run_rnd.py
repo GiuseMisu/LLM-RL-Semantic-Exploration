@@ -63,9 +63,7 @@ def main():
         use_llm_rewards=False,
         max_steps=config["max_steps"]
     )()
-
-    policy.eval()
-    
+  
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(
         eval_env, 

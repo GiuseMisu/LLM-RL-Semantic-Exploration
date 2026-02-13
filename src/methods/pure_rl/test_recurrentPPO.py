@@ -56,8 +56,7 @@ def main():
                                  max_steps=50
                                  )()
 
-    policy.eval()
-    
+
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(eval_env, 
                             policy, 

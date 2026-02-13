@@ -16,8 +16,6 @@ class Phi35LLMClient(BaseLLMClient):
         super().__init__(system_prompt=system_prompt)
         self.model_name = model_name
         
-        #no api key needed cause run locally
-
         # Check if SYSTEM_PROMPT is loaded
         if not system_prompt:
             raise ValueError("SYSTEM_PROMPT is not set properly in llm_shared_utils.")

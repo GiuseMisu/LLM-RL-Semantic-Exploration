@@ -496,9 +496,6 @@ class EurekaSearch:
                 "Key_Pickup_Rate": eval_stats['key_pickup_rate'],
                 "Door_Open_Rate": eval_stats['door_open_rate'],
                 "Mean_Reward": eval_stats['mean_reward'],
-                # se agente non risolve IN NESSUNA ENV_CONF corrente metti -1 = nel plot é strano -1 
-                # "Mean_Steps": eval_stats['mean_steps'] if eval_stats['mean_steps'] != float('inf') else -1
-                # meglio mettere Nan cosi c'é un gap nel plot e si capisce che non ha risolto nessuna
                 "Mean_Steps": eval_stats['mean_steps'] if eval_stats['mean_steps'] != float('inf') else np.nan 
             })
             #=================================================================================
@@ -514,7 +511,6 @@ class EurekaSearch:
 
             # Feedback Generation
             if err:
-                # --- CRITICAL FIX ---
                 # If the code crashed, the stats (0.0, -inf) are fake. 
                 # Do NOT generate strategy feedback. Force LLM to focus ONLY on the bug.
                 feedback_text = (
@@ -650,7 +646,6 @@ class EurekaSearch:
             early_stopping_threshold = 0.955,  # average ENV_RWD threshold for early stopping 
             window_size = 10  # Number of epochs to average over
         ) 
-        
         
         return final_policy
 

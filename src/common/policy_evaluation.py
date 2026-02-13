@@ -118,7 +118,6 @@ def save_evaluation_to_csv(policy_name, env_type, stats, n_episodes):
         ]
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         
-        # Write header if file is new
         if not file_exists:
             writer.writeheader()
         

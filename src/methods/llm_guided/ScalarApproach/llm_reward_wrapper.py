@@ -48,7 +48,7 @@ class LLMRewardWrapper(gym.Wrapper):
         self.llm_weight = llm_weight
         self.verbose = verbose
                
-        # Statistics tracking => might be usefull for different LLM strategies
+        # Statistics tracking 
         self.episode_env_reward = 0.0
         self.episode_llm_reward = 0.0
         self.episode_final_reward = 0.0

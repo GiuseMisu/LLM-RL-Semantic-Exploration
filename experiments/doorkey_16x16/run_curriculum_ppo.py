@@ -1,16 +1,11 @@
 """
 Curriculum Learning PPO on DoorKey - progressive training:
-    5x5  →  6x6  →  8x8  →  16x16
+    5x5  ->  6x6  ->  8x8  ->  16x16
 
 Each stage trains until early-stopping (avg env reward >= 0.92 over 15 epochs),
 then validates on the same env size (30 episodes).  
 If validation success_rate > 0.95 the model is promoted to the next larger env. 
 The 16x16 is the final stage - it trains to completion.
-
-Resume support:
-    python -m experiments.doorkey_16x16.run_curriculum_ppo --resume 3
-    (skips stages 0-2 and loads the 8x8 checkpoint to start 16x16 directly)
-    Stage indices: 0=5x5, 1=6x6, 2=8x8, 3=16x16
 """
 
 import sys
@@ -33,12 +28,11 @@ from src.methods.pure_rl.curriculum_learnign.curriculum_trainer import (
 
 def main():
 
-    # ── CLI argument for resuming from a specific stage ──
+    # -- argument for resuming from a specific stage
     parser = argparse.ArgumentParser(description="Curriculum PPO on DoorKey")
     parser.add_argument(
         "--resume", type=int, default=None, metavar="STAGE",
         help="Resume from this stage index (0=5x5, 1=6x6, 2=8x8, 3=16x16). "
-             "Loads the checkpoint from the previous stage automatically."
     )
     args = parser.parse_args()
 
@@ -46,7 +40,7 @@ def main():
     promotion_threshold = 0.95                  # validation success-rate to advance
     validation_episodes = 30                    # episodes for validation checks
 
-    # ── Create & run curriculum trainer ──
+    # Create & run curriculum trainer
     trainer = CurriculumTrainer(
         stages=stages,
         ppo_params=SHARED_PPO_PARAMS,           # gamma=0.99, epsilon=0.2
@@ -59,7 +53,7 @@ def main():
 
     final_ckpt = trainer.run()
 
-    # - Final evaluation on DoorKey-16x16 with the best model ──
+    # - Final evaluation on DoorKey-16x16 with the best model
     print("\n" + "=" * 60)
     print("  FINAL EVALUATION  -  DoorKey-16x16")
     print("=" * 60 + "\n")

@@ -1,7 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import numpy as np
 
 class MetricsTracker:
     def __init__(self, run_name, log_dir="logs"):
@@ -45,12 +44,11 @@ class MetricsTracker:
             plt.figure(figsize=(10, 6))
             plt.plot(df['epoch'], df[metric], label=metric)
             plt.title(f"{self.run_name} - {metric}")
-            plt.xlabel(x_label) # Changed from hardcoded "Epoch" to variable
+            plt.xlabel(x_label) #  variable x label
             plt.ylabel(metric)
             plt.grid(True, alpha=0.3)
             plt.legend()
             
-            # Save separate image with safe filename
             safe_metric_name = metric.replace(" ", "_").replace("/", "_")
             plt.savefig(os.path.join(self.log_dir, f"{safe_metric_name}.png"))
             plt.close()

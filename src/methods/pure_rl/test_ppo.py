@@ -32,7 +32,6 @@ def main():
     policy.batch_size = 2048  # 4096 for 8x8 /  2048 # for 5x5
 
     # rollout buffer size to match or exceed the batch size
-    # rollout buffer size to match or exceed the batch size
     policy.rollout.iterations = 4096 # 16384 for 8x8 / 4096 # for 5x5 
 
     # Train the environment
@@ -50,8 +49,6 @@ def main():
                                  max_steps=250
                                  )()
 
-    policy.eval()
-    
     # Evaluate over multiple episodes for statistics
     stats = evaluate_policy(eval_env, 
                             policy, 

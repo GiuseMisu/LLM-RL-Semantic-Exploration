@@ -179,7 +179,7 @@ class RNDRollout(Rollout):
         # Combine advantages for policy optimization
         # The intrinsic rewards are already scaled by intrinsic_reward_coeff,
         # so the relative importance is already encoded in the magnitudes.
-        # 
+        
         # to emphasize extrinsic rewards: decrease intrinsic_reward_coeff
         combined_advantages = extrinsic_advantages + intrinsic_advantages
         

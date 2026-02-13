@@ -16,10 +16,7 @@ so the same network works across all grid sizes — no architecture change neede
 """
 
 import os
-import sys
-import copy
 import torch
-import numpy as np
 from torch.nn import functional as F
 
 from src.common.env_setup import make_minigrid_env
@@ -27,9 +24,6 @@ from src.common.policy_evaluation import evaluate_policy
 from src.methods.pure_rl.ppo.ppo_config import PPO
 
 
-# ─────────────────────────────────────────────
-# Default stage configs  (can be overridden)
-# ─────────────────────────────────────────────
 DEFAULT_CURRICULUM_STAGES = [
     {
         "env_id": "MiniGrid-DoorKey-5x5-v0",
@@ -159,7 +153,7 @@ class CurriculumTrainer:
             print(f"  CURRICULUM STAGE {idx + 1}/{len(self.stages)}  —  DoorKey-{label}")
             print("=" * 70 + "\n")
 
-            # 1 — Build environment & PPO agent for this stage
+            # 1 - Build environment & PPO agent for this stage
             env = make_minigrid_env(
                 env_id=stage["env_id"],
                 render_mode="rgb_array",
@@ -178,12 +172,12 @@ class CurriculumTrainer:
             policy.batch_size = stage["batch_size"]
             policy.rollout.iterations = stage["rollout_iterations"]
 
-            # 2 — Transfer weights from previous stage (if any)
+            # 2 - Transfer weights from previous stage (if any)
             if self._previous_model_path is not None:
                 print(f"[CURRICULUM] Loading weights from previous stage: {self._previous_model_path}")
                 self._transfer_weights(policy, self._previous_model_path)
 
-            # 3 — Train with early stopping
+            # 3 - Train with early stopping
             print(f"[CURRICULUM] Training on {stage['env_id']}  |  "
                   f"early_stop={stage['early_stopping_threshold']} "
                   f"window={stage['early_stopping_window']}")
@@ -193,7 +187,7 @@ class CurriculumTrainer:
                 window_size=stage["early_stopping_window"],
             )
 
-            # 4 — Save the best checkpoint for this stage
+            # 4 - Save the best checkpoint for this stage
             stage_ckpt = os.path.join(
                 self.model_dir,
                 f"CurriculumPPO_DoorKey_{label}_best.pkl",
@@ -202,12 +196,12 @@ class CurriculumTrainer:
             self._save_stage_checkpoint(policy, stage_ckpt)
             print(f"[CURRICULUM] Stage checkpoint saved → {stage_ckpt}")
 
-            # 5 — Validation on same-dimension env
+            # 5 - Validation on same-dimension env
             val_stats = self._validate(policy, stage)
             val_success = val_stats["success_rate"]
             print(f"[CURRICULUM] Validation success rate on {label}: {val_success:.2%}")
 
-            # 6 — Decide promotion
+            # 6 - Decide promotion
             if is_last_stage:
                 print(f"\n[CURRICULUM] Final stage ({label}) complete - no further promotion.")
                 self._previous_model_path = stage_ckpt
@@ -249,7 +243,7 @@ class CurriculumTrainer:
         """
         Load weights from a checkpoint into *policy*.
         Because all stages share the same architecture (MiniGridCNN 7x7x3
-        partial obs → BaseNet actor/critic), a direct state_dict load works.
+        partial obs -> BaseNet actor/critic), a direct state_dict load works.
         Resets the optimizer so the new stage starts fresh.
         """
         saved_state = torch.load(checkpoint_path, weights_only=True, map_location=policy.device)

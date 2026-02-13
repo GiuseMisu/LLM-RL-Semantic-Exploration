@@ -1,11 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List,  Optional, Tuple
 
-# Set style for better-looking plots
+# Set style 
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 10
@@ -16,8 +15,7 @@ def plot_env_reward(csv_paths: List[str],
                     save_path: Optional[str] = None,
                     figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Environment/Extrinsic Reward across experiments.
-    Handles both 'Env_Reward' and 'Extrinsic_Reward' column names.
+    Handles both 'Env_Reward' and 'Extrinsic_Reward' column names
     """
     
     data_dict = {}
@@ -69,7 +67,7 @@ def plot_episode_length(csv_paths: List[str],
                         save_path: Optional[str] = None,
                         figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Episode Length across experiments.
+    Plot comparison of Episode Length across experiments
     """
     
     data_dict = {}
@@ -103,8 +101,7 @@ def plot_episode_length(csv_paths: List[str],
     
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-         
-    
+            
     plt.show()
     return fig
 
@@ -115,7 +112,7 @@ def plot_policy_loss(csv_paths: List[str],
                      save_path: Optional[str] = None,
                      figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Policy Loss across experiments.
+    Plot comparison of Policy Loss across experiments
     """
     
     data_dict = {}
@@ -161,7 +158,7 @@ def plot_value_loss(csv_paths: List[str],
                     save_path: Optional[str] = None,
                     figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Value Loss across experiments.
+    Plot comparison of Value Loss across experiments
     """
     
     data_dict = {}
@@ -206,7 +203,7 @@ def plot_entropy(csv_paths: List[str],
                  save_path: Optional[str] = None,
                  figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Entropy across experiments.
+    Plot comparison of Entropy across experiments
     """
     
     data_dict = {}
@@ -251,7 +248,7 @@ def plot_success_rate(csv_paths: List[str],
                       save_path: Optional[str] = None,
                       figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Success Rate across experiments.
+    Plot comparison of Success Rate across experiments
     """
     
     data_dict = {}
@@ -304,7 +301,7 @@ def plot_key_pickup_rate(csv_paths: List[str],
                          save_path: Optional[str] = None,
                          figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Key Pickup Rate across experiments.
+    Plot comparison of Key Pickup Rate across experiments
     """
     
     data_dict = {}
@@ -357,7 +354,7 @@ def plot_door_open_rate(csv_paths: List[str],
                         save_path: Optional[str] = None,
                         figsize: Tuple[int, int] = (10, 6)):
     """
-    Plot comparison of Door Open Rate across experiments.
+    Plot comparison of Door Open Rate across experiments
     """
     
     data_dict = {}
@@ -502,11 +499,9 @@ def plot_mean_steps(csv_paths: List[str],
     return fig
 
 
-# Example usage
+
 if __name__ == "__main__":
-   
-    import os
-    import sys
+
     from pathlib import Path
     from matplotlib.ticker import MaxNLocator, FuncFormatter
     base_dir = Path(__file__).resolve().parent.parent
@@ -559,53 +554,63 @@ if __name__ == "__main__":
     #     "RND PPO",
     # ]
 
-    # -----------------------------    
-    #doorkey16x16 = [
-    #      str(logs_dir / "PPO_DOORKEY_16x16" / "PPO_DOORKEY_16x16_metrics.csv"),
-    #      str(logs_dir / "RecurrentPPO_lstm_DOORKEY_16x16" / "RecurrentPPO_lstm_DOORKEY_16x16_metrics.csv"),
-    #      str(logs_dir / "RNDPPO_DOORKEY_16x16" / "RNDPPO_DOORKEY_16x16_metrics.csv"),
-    #      str(logs_dir / "Eureka_DoorKey16x16_Qwen" / "Eureka_Qwen_DoorKey_16x16_PPO_FINAL_metrics.csv"),
-    #      str(logs_dir / "Eureka_DoorKey16x16_GPT-OSS" / "Eureka_GPT-OSS_DoorKey_16x16_PPO_FINAL_metrics.csv"),
-    #      str(logs_dir / "Eureka_DoorKey16x16_DeepSeek" / "Eureka_DeepSeek_DoorKey_16x16_PPO_FINAL_metrics.csv")
+    # -----------------------------   
+    # logs_dir = base_dir / "experiments" / "OTHER_TESTS"
+    # doorkey8x8_limited_data = [
+    #     str(logs_dir / "PPO_2" / "PPO_DOORKEY_8x8_metrics.csv"),
+    #     str(logs_dir / "RECURRENT_2" / "RecurrentPPO_lstm_DOORKEY_8x8_metrics.csv"),
+    #     str(logs_dir / "RND_2" / "RNDPPO_DOORKEY_8x8_metrics.csv"),
     # ]
-    #label_doorkey16x16 = [
+    # label_doorkey8x8_limited_data = [ 
     #     "PPO",
     #     "Recurrent PPO",
     #     "RND PPO",
-    #      "Qwen",
-    #      "GPT-OSS",
-    #      "DeepSeek"
     # ]
 
-    # to_plot = doorkey16x16 # doorkey5x5 #empty16x16 #empty5x5 #doorkey16x16
-    # to_label = label_doorkey16x16 # label_doorkey5x5 #label_empty16x16 #label_empty5x5 #label_doorkey16x16
-
-    # # # create output directory and plot all metrics once using the full lists
-    # output_dir = base_dir / "analysis" / "Eureka_DoorKey_16x16"
-    # output_dir.mkdir(parents=True, exist_ok=True)
-
-    # plot_env_reward(to_plot, to_label, save_path=str(output_dir / "Env_Reward_DoorKey_16x16.png"))
-    # plot_episode_length(to_plot, to_label, save_path=str(output_dir / "Episode_Length_DoorKey_16x16.png"))
-    # plot_entropy(to_plot, to_label, save_path=str(output_dir / "Entropy_DoorKey_16x16.png"))
-
-    #plot_policy_loss(doorkey8x8, label_doorkey8x8, save_path="policy_loss.png")
-    #plot_value_loss(doorkey8x8, label_doorkey8x8, save_path="value_loss.png")
-    
-
-    Reflection_doorkey16x16 = [
-         str(logs_dir / "Eureka_DoorKey16x16_Qwen" / "Eureka_Qwen_DoorKey_16x16_reflection.csv"),
-         str(logs_dir / "Eureka_DoorKey16x16_GPT-OSS" / "Eureka_GPT-OSS_DoorKey_16x16_reflection.csv"),
-         str(logs_dir / "Eureka_DoorKey16x16_DeepSeek" / "Eureka_DeepSeek_DoorKey_16x16_reflection.csv")
+    # -----------------------------    
+    doorkey16x16 = [
+         str(logs_dir / "PPO_DOORKEY_16x16" / "PPO_DOORKEY_16x16_metrics.csv"),
+         str(logs_dir / "RecurrentPPO_lstm_DOORKEY_16x16" / "RecurrentPPO_lstm_DOORKEY_16x16_metrics.csv"),
+         str(logs_dir / "RNDPPO_DOORKEY_16x16" / "RNDPPO_DOORKEY_16x16_metrics.csv"),
+         str(logs_dir / "Eureka_DoorKey16x16_Qwen" / "Eureka_Qwen_DoorKey_16x16_PPO_FINAL_metrics.csv"),
+         str(logs_dir / "Eureka_DoorKey16x16_GPT-OSS" / "Eureka_GPT-OSS_DoorKey_16x16_PPO_FINAL_metrics.csv"),
+         str(logs_dir / "Eureka_DoorKey16x16_DeepSeek" / "Eureka_DeepSeek_DoorKey_16x16_PPO_FINAL_metrics.csv")
     ]
-    label_reflection_doorkey16x16 = [
+    label_doorkey16x16 = [
+        "PPO",
+        "Recurrent PPO",
+        "RND PPO",
          "Qwen",
          "GPT-OSS",
          "DeepSeek"
     ]
 
-    plot_success_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Success_Rate_Reflection.png")
-    plot_key_pickup_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Key_Pickup_Rate_Reflection.png")
-    plot_door_open_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Door_Open_Rate_Reflection.png")
-    plot_mean_reward(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Mean_Reward_Reflection.png")
-    plot_mean_steps(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Mean_Steps_Reflection.png")
+    to_plot = doorkey16x16 # doorkey5x5 #empty16x16 #empty5x5 #doorkey16x16
+    to_label = label_doorkey16x16 # label_doorkey5x5 #label_empty16x16 #label_empty5x5 #label_doorkey16x16
+
+    output_dir = base_dir/ "analysis" 
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    plot_env_reward(to_plot, to_label, save_path=str(output_dir / "Env_Reward_DoorKey_16x16.png"))
+    plot_episode_length(to_plot, to_label, save_path=str(output_dir / "Episode_Length_DoorKey_16x16.png"))
+    plot_entropy(to_plot, to_label, save_path=str(output_dir / "Entropy_DoorKey_16x16.png"))
+    plot_policy_loss(to_plot, to_label, save_path="policy_loss.png")
+    plot_value_loss(to_plot, to_label, save_path="value_loss.png")
+    
+    # Reflection_doorkey16x16 = [
+    #      str(logs_dir / "Eureka_DoorKey16x16_Qwen" / "Eureka_Qwen_DoorKey_16x16_reflection.csv"),
+    #      str(logs_dir / "Eureka_DoorKey16x16_GPT-OSS" / "Eureka_GPT-OSS_DoorKey_16x16_reflection.csv"),
+    #      str(logs_dir / "Eureka_DoorKey16x16_DeepSeek" / "Eureka_DeepSeek_DoorKey_16x16_reflection.csv")
+    # ]
+    # label_reflection_doorkey16x16 = [
+    #      "Qwen",
+    #      "GPT-OSS",
+    #      "DeepSeek"
+    # ]
+
+    # plot_success_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Success_Rate_Reflection.png")
+    # plot_key_pickup_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Key_Pickup_Rate_Reflection.png")
+    # plot_door_open_rate(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Door_Open_Rate_Reflection.png")
+    # plot_mean_reward(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Mean_Reward_Reflection.png")
+    # plot_mean_steps(Reflection_doorkey16x16, label_reflection_doorkey16x16, save_path="Mean_Steps_Reflection.png")
     
